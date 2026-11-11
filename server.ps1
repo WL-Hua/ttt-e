@@ -33,6 +33,23 @@ function Read-Wrong {
     return @($parsed.items)
 }
 
+function Test-AnswerMap($answers) {
+    if ($answers -isnot [pscustomobject]) { return $false }
+    foreach ($property in $answers.PSObject.Properties) {
+        if ($property.Value -isnot [array]) { return $false }
+        foreach ($letter in $property.Value) {
+            if ($letter -isnot [string]) { return $false }
+        }
+    }
+    return $true
+}
+
+function Test-Attempt($attempt) {
+    return ($attempt -and $attempt.id -is [string] -and -not [string]::IsNullOrWhiteSpace($attempt.id) -and
+        $attempt.submittedAt -is [string] -and $attempt.submittedAt -match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$' -and
+        (Test-AnswerMap $attempt.answers))
+}
+
 function Write-Data($file, $value) {
     if (-not (Test-Path -LiteralPath $dataDirectory)) {
         New-Item -ItemType Directory -Path $dataDirectory | Out-Null
@@ -98,11 +115,17 @@ try {
                     }
                     $count = if ($existing.Count) { $existing[0].count } else { 0 }
                     $session = $body.session
+                    $attempts = @()
+                    if ($existing.Count -and $existing[0].attempts -is [array]) { $attempts = @($existing[0].attempts) }
                     if ($path -eq '/api/progress/submit') {
                         if (-not $existing.Count -or -not $existing[0].session -or $existing[0].session.id -cne $body.sessionId) {
                             Send-Json $context 409 @{ error = 'The current practice has changed.'; items = $entries }
                             continue
                         }
+                        if (-not (Test-Attempt $body.attempt) -or $body.attempt.id -cne $body.sessionId) {
+                            throw 'Invalid submitted answer sheet.'
+                        }
+                        $attempts = @($attempts) + @($body.attempt)
                         $count++
                         $session = $null
                     } else {
@@ -112,7 +135,14 @@ try {
                                 continue
                             }
                             if ($body.count -isnot [int] -or $body.count -lt 0) { throw 'Invalid practice count.' }
+                            if ($body.attempts -isnot [array]) {
+                                throw 'Invalid imported answer sheets.'
+                            }
+                            foreach ($importedAttempt in $body.attempts) {
+                                if (-not (Test-Attempt $importedAttempt)) { throw 'Invalid imported answer sheet.' }
+                            }
                             $count = $body.count
+                            $attempts = @($body.attempts)
                         }
                         if (($path -ne '/api/progress/import' -or $null -ne $session) -and
                             (-not $session -or $session.id -isnot [string] -or [string]::IsNullOrWhiteSpace($session.id) -or
@@ -120,7 +150,7 @@ try {
                             throw 'Invalid practice session.'
                         }
                     }
-                    $entry = @{ paperId = $body.paperId; revision = $revision + 1; count = $count; session = $session }
+                    $entry = @{ paperId = $body.paperId; revision = $revision + 1; count = $count; session = $session; attempts = $attempts }
                     $entries = @($entries | Where-Object { $_.paperId -cne $body.paperId }) + @($entry)
                     Write-Data $progressFile @{ items = $entries }
                     Send-Json $context 200 @{ items = $entries }
@@ -151,7 +181,7 @@ try {
             } elseif ($request.HttpMethod -eq 'GET') {
                 $staticFiles = @{
                     '/' = 'index.html'; '/index.html' = 'index.html'; '/app.js' = 'app.js'
-                    '/style.css' = 'style.css'; '/bundled-papers.js' = 'bundled-papers.js'
+                    '/style.css' = 'style.css'; '/review.css' = 'review.css'; '/bundled-papers.js' = 'bundled-papers.js'
                     '/vendor/pdf.min.js' = 'vendor\pdf.min.js'
                     '/vendor/pdf.worker.min.js' = 'vendor\pdf.worker.min.js'
                     '/vendor/jszip.min.js' = 'vendor\jszip.min.js'

@@ -1,0 +1,9 @@
+.attempt-history{display:flex;flex-direction:column;align-items:flex-start;gap:7px;border-top:1px solid #f0f3ef;margin-top:16px;padding-top:13px}
+.attempt-history strong{color:#7d8f81;font-size:11px}
+.attempt-history .link-action{text-align:left;overflow-wrap:anywhere}
+.wrong-mode-actions{display:flex;gap:8px;flex-wrap:wrap}
+.wrong-answer-options{display:grid;gap:8px;color:#68796c;font-size:13px;line-height:1.7;margin:16px 0}
+.wrong-answer-options>div{border:1px solid #e9eee9;border-radius:8px;padding:9px 12px}
+.wrong-answer-options .correct-answer-option{border-color:#b9d4bc;background:#f2f8f1;color:#315f49}
+.correct-answer-option span{font-size:11px;font-weight:600;margin-left:6px}
+@media(max-width:700px){.wrong-mode-actions{width:100%}.wrong-mode-actions .button{flex:1}}

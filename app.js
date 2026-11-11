@@ -10,6 +10,8 @@ const toast = document.querySelector('#toast');
 const sharedMode = location.protocol === 'http:' && location.hostname === '127.0.0.1' && location.port === '8765';
 let state = { papers: [], wrong: [], session: null, progress: [] };
 let view = 'home';
+let attemptReview = null;
+let wrongAnswerMode = false;
 let notice = '';
 let toastTimer;
 let wrongReady = !sharedMode;
@@ -53,10 +55,18 @@ function validProgress(item) {
   return Boolean(item && typeof item.paperId === 'string' && item.paperId &&
     Number.isSafeInteger(item.revision) && item.revision > 0 &&
     Number.isSafeInteger(item.count) && item.count >= 0 &&
+    (item.attempts === undefined || (Array.isArray(item.attempts) && item.attempts.every(validAttempt))) &&
     (session === null || (session && typeof session.id === 'string' && session.id &&
       Number.isSafeInteger(session.index) && session.index >= 0 && session.answers &&
       typeof session.answers === 'object' && !Array.isArray(session.answers) &&
       Object.values(session.answers).every(answer => Array.isArray(answer) && answer.every(letter => typeof letter === 'string')))));
+}
+
+function validAttempt(attempt) {
+  return Boolean(attempt && typeof attempt.id === 'string' && attempt.id &&
+    typeof attempt.submittedAt === 'string' && Number.isFinite(Date.parse(attempt.submittedAt)) &&
+    attempt.answers && typeof attempt.answers === 'object' && !Array.isArray(attempt.answers) &&
+    Object.values(attempt.answers).every(answer => Array.isArray(answer) && answer.every(letter => typeof letter === 'string')));
 }
 
 function sessionSnapshot(session) {
@@ -142,14 +152,20 @@ async function refreshProgress() {
   }
 }
 
-async function updateProgress(path, paperId, session, sessionId, importedCount = 0) {
+async function updateProgress(path, paperId, session, sessionId, importedCount = 0, attempt = null, importedAttempts = []) {
   const existing = progressFor(paperId);
   if (!sharedMode) {
+    const previousProgress = state.progress;
     const entry = { paperId, revision: (existing ? existing.revision : 0) + 1,
       count: path.endsWith('/import') ? importedCount : (existing ? existing.count : 0) + (path.endsWith('/submit') ? 1 : 0),
-      session: path.endsWith('/submit') ? null : session };
+      session: path.endsWith('/submit') ? null : session,
+      attempts: path.endsWith('/submit') ? [...(existing && existing.attempts || []), attempt] : (path.endsWith('/import') ? importedAttempts : (existing && existing.attempts || [])) };
     state.progress = state.progress.filter(item => item.paperId !== paperId).concat(entry);
-    return save();
+    if (!save()) {
+      state.progress = previousProgress;
+      return false;
+    }
+    return true;
   }
   if (!progressReady || progressBusy) {
     notify('共享试卷进度尚未连接或正在保存，请稍后重试。', true);
@@ -158,7 +174,7 @@ async function updateProgress(path, paperId, session, sessionId, importedCount =
   progressBusy = true;
   progressGeneration++;
   try {
-    state.progress = await progressRequest(path, { paperId, revision: existing ? existing.revision : 0, session, sessionId, count: importedCount });
+    state.progress = await progressRequest(path, { paperId, revision: existing ? existing.revision : 0, session, sessionId, count: importedCount, attempt, attempts: importedAttempts });
     save();
     return true;
   } catch (error) {
@@ -195,7 +211,7 @@ async function importProgress(file) {
     let skipped = 0;
     for (const item of data.items) {
       if (progressFor(item.paperId)) { skipped++; continue; }
-      if (!await updateProgress('/api/progress/import', item.paperId, item.session, null, item.count)) return;
+      if (!await updateProgress('/api/progress/import', item.paperId, item.session, null, item.count, null, item.attempts || [])) return;
       imported++;
     }
     render();
@@ -642,8 +658,9 @@ function heading(kicker, title, description, right = '') {
 function paperCard(paper) {
   const progress = progressFor(paper.id);
   const snapshot = progress && progress.session;
+  const attempts = progress && Array.isArray(progress.attempts) ? progress.attempts : [];
   const answered = snapshot ? paper.questions.filter(q => (snapshot.answers[q.id] || []).length).length : 0;
-  return `<article class="paper-card"><div class="paper-top"><div class="paper-icon">▤</div><span class="tag">${paper.questions.length} 道题目</span></div><h3>${escapeHtml(paper.name)}</h3><div class="paper-meta">${escapeHtml(paper.format || 'PDF')} 试卷 · 整卷作答${paper.filledFromPdf && paper.filledFromPdf.length ? ` · 同名 PDF 补全：第 ${paper.filledFromPdf.join('、')} 题` : ''}${paper.skipped.length ? ` · 未识别：第 ${paper.skipped.join('、')} 题` : ''}</div><div class="paper-meta">已交卷 ${progress ? progress.count : 0} 次${snapshot ? ` · 进行到第 ${Math.min(snapshot.index + 1, paper.questions.length)} 题 · 已答 ${answered} 题` : ' · 暂无未完成练习'}</div><div class="paper-actions"><button class="link-action" data-action="start" data-id="${escapeHtml(paper.id)}">${snapshot ? '继续练习' : '开始练习'} ↗</button><button class="delete-action" data-action="delete-paper" data-id="${escapeHtml(paper.id)}" aria-label="删除 ${escapeHtml(paper.name)}">删除</button></div></article>`;
+  return `<article class="paper-card"><div class="paper-top"><div class="paper-icon">▤</div><span class="tag">${paper.questions.length} 道题目</span></div><h3>${escapeHtml(paper.name)}</h3><div class="paper-meta">${escapeHtml(paper.format || 'PDF')} 试卷 · 整卷作答${paper.filledFromPdf && paper.filledFromPdf.length ? ` · 同名 PDF 补全：第 ${paper.filledFromPdf.join('、')} 题` : ''}${paper.skipped.length ? ` · 未识别：第 ${paper.skipped.join('、')} 题` : ''}</div><div class="paper-meta">已交卷 ${progress ? progress.count : 0} 次${snapshot ? ` · 进行到第 ${Math.min(snapshot.index + 1, paper.questions.length)} 题 · 已答 ${answered} 题` : ' · 暂无未完成练习'}</div><div class="paper-actions"><button class="link-action" data-action="start" data-id="${escapeHtml(paper.id)}">${snapshot ? '继续练习' : '开始练习'} ↗</button><button class="delete-action" data-action="delete-paper" data-id="${escapeHtml(paper.id)}" aria-label="删除 ${escapeHtml(paper.name)}">删除</button></div>${attempts.length ? `<div class="attempt-history"><strong>历史答卷</strong>${attempts.map((attempt, index) => `<button class="link-action" data-action="view-attempt" data-id="${escapeHtml(paper.id)}" data-index="${index}">第 ${index + 1} 次 · ${escapeHtml(new Date(attempt.submittedAt).toLocaleString('zh-CN'))} →</button>`).join('')}</div>` : ''}</article>`;
 }
 
 function home() {
@@ -668,11 +685,11 @@ function papersView() {
 }
 
 function wrongView() {
-  return `${heading('REVIEW & GROW', '错题本', '把不会的题，变成下一次的底气。', `<button class="button primary" data-action="practice-wrong" ${state.wrong.length ? '' : 'disabled'}>↻ &nbsp; 练习全部错题</button>`)}
+  return `${heading('REVIEW & GROW', '错题本', '把不会的题，变成下一次的底气。', `<div class="wrong-mode-actions"><button class="button ${wrongAnswerMode ? 'primary' : 'secondary'}" data-action="wrong-answer-mode" aria-pressed="${wrongAnswerMode}">${wrongAnswerMode ? '✓ 直接查看答案' : '直接查看答案'}</button><button class="button ${wrongAnswerMode ? 'secondary' : 'primary'}" data-action="practice-wrong" ${state.wrong.length ? '' : 'disabled'}>↻ &nbsp; 答题练习</button></div>`)}
     ${syncWarning ? `<div class="notice" role="alert">${escapeHtml(syncWarning)}</div>` : `<div class="notice">错题本已连接本机共享存储，不同浏览器使用同一地址即可查看。</div>`}
     <div><button class="button secondary" data-action="export-wrong">导出错题本</button> <button class="button secondary" data-action="import-wrong">导入错题本</button></div>
     <div class="section-title"><div><h2>待巩固的题目 <span class="tag">${state.wrong.length}</span></h2><p>错题会保留在这里，可反复练习或手动移除</p></div></div>
-    <div class="wrong-list">${state.wrong.length ? state.wrong.map(item => `<article class="panel wrong-item"><span class="tag">${escapeHtml(item.question.type)} · 第 ${item.question.number} 题</span><h3>${escapeHtml(item.question.stem)}</h3><div class="wrong-item-bottom"><span>${escapeHtml(item.paperName)}</span><button class="delete-action" data-action="remove-wrong" data-id="${escapeHtml(item.question.id)}">移除错题</button></div></article>`).join('') : '<div class="empty-card"><div class="empty-symbol">✳</div>还没有错题，继续保持！<br>完成试卷后，答错、漏选和未作答的题目会自动收录在这里。</div>'}</div>`;
+    <div class="wrong-list">${state.wrong.length ? state.wrong.map(item => `<article class="panel wrong-item"><span class="tag">${escapeHtml(item.question.type)} · 第 ${item.question.number} 题</span><h3>${escapeHtml(item.question.stem)}</h3>${wrongAnswerMode ? `<div class="wrong-answer-options">${item.question.options.map(option => `<div class="${item.question.answer.includes(option.letter) ? 'correct-answer-option' : ''}"><strong>${escapeHtml(option.letter)}.</strong> ${escapeHtml(option.text)}${item.question.answer.includes(option.letter) ? ' <span>正确答案</span>' : ''}</div>`).join('')}</div><div class="answer-box"><strong>正确答案：${item.question.answer.map(escapeHtml).join('、')}</strong>${item.question.explanation ? `<br><br>解析：${escapeHtml(item.question.explanation)}` : ''}</div>` : ''}<div class="wrong-item-bottom"><span>${escapeHtml(item.paperName)}</span><button class="delete-action" data-action="remove-wrong" data-id="${escapeHtml(item.question.id)}">移除错题</button></div></article>`).join('') : '<div class="empty-card"><div class="empty-symbol">✳</div>还没有错题，继续保持！<br>完成试卷后，答错、漏选和未作答的题目会自动收录在这里。</div>'}</div>`;
 }
 
 function isCorrect(question, selected) {
@@ -690,7 +707,8 @@ function questionScore(question, selected) {
 }
 
 function examView() {
-  const session = state.session;
+  const session = attemptReview || state.session;
+  const archivedReview = Boolean(attemptReview);
   if (!session || !session.questions.length) { view = 'home'; return home(); }
   const question = session.questions[session.index];
   const selected = session.answers[question.id] || [];
@@ -700,8 +718,8 @@ function examView() {
   const maximum = session.questions.reduce((total, q) => total + maxQuestionScore(q), 0);
   const partialCount = session.questions.filter(q => !isCorrect(q, session.answers[q.id] || []) && questionScore(q, session.answers[q.id] || []) > 0).length;
   const result = session.submitted;
-  const banner = result ? `<div class="result-banner"><div class="score">${score}<small> / ${maximum} 分</small></div><div><h2>练习完成，继续加油！</h2><p>全对 ${correctCount} 题 · 漏选 ${partialCount} 题 · 错选或未作答 ${session.questions.length - correctCount - partialCount} 题<br>判断、单选每题 0.5 分；多选每题 1 分，漏选 0.5 分，错选 0 分。</p></div><button class="button secondary" data-view="wrong">查看错题本 →</button></div>` : '';
-  return `${heading(result ? 'PRACTICE RESULTS' : 'FOCUS & PRACTICE', result ? '练习结果' : '专注练习', result ? '回顾每一道题，让练习更有价值。' : '慢慢来，认真思考每一道题。', '<button class="button secondary" data-view="papers">← 返回试卷</button>')}
+  const banner = result ? `<div class="result-banner"><div class="score">${score}<small> / ${maximum} 分</small></div><div><h2>${archivedReview ? '历史答卷回看' : '练习完成，继续加油！'}</h2><p>${archivedReview ? `交卷时间：${escapeHtml(new Date(session.submittedAt).toLocaleString('zh-CN'))}<br>` : ''}全对 ${correctCount} 题 · 漏选 ${partialCount} 题 · 错选或未作答 ${session.questions.length - correctCount - partialCount} 题<br>判断、单选每题 0.5 分；多选每题 1 分，漏选 0.5 分，错选 0 分。</p></div><button class="button secondary" data-view="wrong">查看错题本 →</button></div>` : '';
+  return `${heading(archivedReview ? 'ANSWER SHEET' : result ? 'PRACTICE RESULTS' : 'FOCUS & PRACTICE', archivedReview ? '历史答卷回看' : result ? '练习结果' : '专注练习', result ? '回顾每一道题，让练习更有价值。' : '慢慢来，认真思考每一道题。', `<button class="button secondary" ${archivedReview ? 'data-action="exit-attempt-review"' : 'data-view="papers"'}>← ${archivedReview ? '返回答卷记录' : '返回试卷'}</button>`)}
     ${banner}<div class="exam-layout"><section class="panel exam-main"><div class="exam-head"><h2>${escapeHtml(session.title)}</h2><small>${session.index + 1} / ${session.questions.length}</small></div>
     <div class="progress-track"><div class="progress-fill" style="width:${(result ? 100 : answered / session.questions.length * 100)}%"></div></div>
     <div class="question-kicker"><span class="tag">${escapeHtml(question.type)}</span><span>原卷第 ${question.number} 题 ${question.type === '多选题' ? ' · 可选择多个答案' : ' · 请选择一个答案'}${question.source ? ` · ${escapeHtml(question.source)}` : ''}</span></div>
@@ -713,7 +731,7 @@ function examView() {
     }).join('')}</div>
     ${result ? `<div class="answer-box"><strong class="${isCorrect(question, selected) ? '' : 'bad'}">${isCorrect(question, selected) ? '回答正确' : questionScore(question, selected) > 0 ? '漏选' : '回答错误'}</strong> &nbsp; 得分：${questionScore(question, selected)} / ${maxQuestionScore(question)} &nbsp; · &nbsp; 你的答案：${selected.join('、') || '未作答'} &nbsp; · &nbsp; 正确答案：${question.answer.join('、')}${question.explanation ? `<br><br>解析：${escapeHtml(question.explanation)}` : ''}</div>` : ''}
     <div class="exam-actions"><button class="button secondary" data-action="prev" ${session.index === 0 ? 'disabled' : ''}>← 上一题</button><button class="button secondary" data-action="next" ${session.index === session.questions.length - 1 ? 'disabled' : ''}>下一题 →</button></div></section>
-    <aside class="panel exam-side"><h3>答题卡</h3><p>${result ? '绿色为全对，红色为漏选、错误或未作答' : `已作答 ${answered} / ${session.questions.length} 题`}</p><div class="palette">${session.questions.map((q, index) => `<button data-action="jump" data-index="${index}" class="${index === session.index ? 'current' : ''} ${result ? (isCorrect(q, session.answers[q.id] || []) ? 'right' : 'wrong') : ((session.answers[q.id] || []).length ? 'answered' : '')}" aria-label="第 ${index + 1} 题">${index + 1}</button>`).join('')}</div>${result ? '<button class="button secondary full" data-action="restart">↻ 重新练习</button>' : '<button class="button primary full" data-action="submit">交卷并查看结果</button>'}</aside></div>`;
+    <aside class="panel exam-side"><h3>答题卡</h3><p>${result ? '绿色为全对，红色为漏选、错误或未作答' : `已作答 ${answered} / ${session.questions.length} 题`}</p><div class="palette">${session.questions.map((q, index) => `<button data-action="jump" data-index="${index}" class="${index === session.index ? 'current' : ''} ${result ? (isCorrect(q, session.answers[q.id] || []) ? 'right' : 'wrong') : ((session.answers[q.id] || []).length ? 'answered' : '')}" aria-label="第 ${index + 1} 题">${index + 1}</button>`).join('')}</div>${archivedReview ? '<button class="button secondary full" data-action="exit-attempt-review">返回答卷记录</button>' : result ? '<button class="button secondary full" data-action="restart">↻ 重新练习</button>' : '<button class="button primary full" data-action="submit">交卷并查看结果</button>'}</aside></div>`;
 }
 
 function render() {
@@ -744,6 +762,7 @@ function confirmAction(title, message, buttonText) {
 async function startSession(title, questions, sources, paperId = null) {
   const session = { title, questions, sources, answers: {}, index: 0, submitted: false, paperId, practiceId: crypto.randomUUID() };
   if (paperId && !await updateProgress('/api/progress/save', paperId, sessionSnapshot(session))) return;
+  attemptReview = null;
   state.session = session;
   save();
   view = 'exam';
@@ -756,13 +775,14 @@ document.addEventListener('click', async event => {
   if (!button) return;
   if (button.dataset.view) {
     event.preventDefault();
+    attemptReview = null;
     view = button.dataset.view;
     render();
     if (view === 'wrong') refreshWrong();
     return;
   }
   const action = button.dataset.action;
-  const session = state.session;
+  const session = attemptReview || state.session;
   if (progressBusy) { notify('正在保存试卷进度，请稍候。'); return; }
   if (action === 'import') input.click();
   else if (action === 'export-progress') exportProgress();
@@ -770,6 +790,27 @@ document.addEventListener('click', async event => {
   else if (action === 'import-progress') progressInput.click();
   else if (action === 'export-wrong') exportWrong();
   else if (action === 'import-wrong') wrongInput.click();
+  else if (action === 'wrong-answer-mode') { wrongAnswerMode = !wrongAnswerMode; render(); }
+  else if (action === 'view-attempt') {
+    const paper = state.papers.find(item => item.id === button.dataset.id);
+    const progress = paper && progressFor(paper.id);
+    const attempt = progress && progress.attempts && progress.attempts[Number(button.dataset.index)];
+    if (paper && validAttempt(attempt)) {
+      attemptReview = { title: paper.name, questions: paper.questions,
+        sources: Object.fromEntries(paper.questions.map(question => [question.id, paper.name])),
+        answers: attempt.answers, index: 0, submitted: true, paperId: paper.id,
+        practiceId: attempt.id, submittedAt: attempt.submittedAt };
+      view = 'exam';
+      render();
+      window.scrollTo(0, 0);
+    } else {
+      notify('这份历史答卷记录无效，请重新导入试卷进度备份。', true);
+    }
+  } else if (action === 'exit-attempt-review') {
+    attemptReview = null;
+    view = 'papers';
+    render();
+  }
   else if (action === 'resume' && session) { view = 'exam'; render(); }
   else if (action === 'start') {
     const paper = state.papers.find(item => item.id === button.dataset.id);
@@ -813,11 +854,14 @@ document.addEventListener('click', async event => {
       if (state.session !== session) { notify('练习已发生变化，请重新确认交卷。', true); return; }
       const incorrect = session.questions.filter(question => !isCorrect(question, session.answers[question.id] || []))
         .map(question => ({ question, paperName: session.sources[question.id] }));
+      const attempt = { id: session.practiceId, submittedAt: new Date().toISOString(),
+        answers: Object.fromEntries(Object.entries(session.answers).map(([id, answer]) => [id, answer.slice()])) };
       if (session.paperId && sharedMode && !progressReady) { notify('共享试卷进度未连接，无法交卷。', true); return; }
       if (sharedMode && !await updateWrong('/api/wrong/add', { items: incorrect })) return;
       if (state.session !== session) { notify('练习已发生变化，请重新确认交卷。', true); return; }
-      if (session.paperId && !await updateProgress('/api/progress/submit', session.paperId, null, session.practiceId)) return;
+      if (session.paperId && !await updateProgress('/api/progress/submit', session.paperId, null, session.practiceId, 0, attempt)) return;
       session.submitted = true;
+      session.submittedAt = attempt.submittedAt;
       if (!sharedMode) {
         for (const item of incorrect) {
           if (!state.wrong.some(existing => existing.question.id === item.question.id)) state.wrong.push(item);
@@ -825,7 +869,7 @@ document.addEventListener('click', async event => {
       }
       save(); render(); window.scrollTo(0, 0);
     }
-  } else if (session && action === 'restart') {
+  } else if (session && action === 'restart' && !attemptReview) {
     if (session.paperId && progressFor(session.paperId) && progressFor(session.paperId).session) {
       notify('这份试卷已有未完成的练习，请从试卷列表继续。', true);
       return;
