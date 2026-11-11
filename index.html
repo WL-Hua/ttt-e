@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f5">
+  <title>导游考试模拟器</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="vendor/pdf.min.js"></script>
+  <script defer src="vendor/jszip.min.js"></script>
+  <script defer src="bundled-papers.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#home" data-view="home" aria-label="知途首页"><span class="brand-mark">导</span><span>导游<small>STUDY COMPANION</small></span></a>
+      <div class="side-label">学习空间</div>
+      <nav class="navigation" aria-label="主导航">
+        <button class="nav-item active" data-view="home"><span class="nav-icon">⌂</span>学习首页 <span class="nav-arrow">↗</span></button>
+        <button class="nav-item" data-view="papers"><span class="nav-icon">▤</span>我的试卷 <span class="nav-count" id="paper-count">0</span></button>
+        <button class="nav-item" data-view="wrong"><span class="nav-icon">◇</span>错题本 <span class="nav-count" id="wrong-count">0</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="side-quote"><span>✳</span><p>每一次练习，<br>都离目标更近一点。</p><small>KEEP GOING, KEEP GROWING.</small></div>
+        <div class="privacy"><span>◉</span><div>数据留在本地<small id="storage-description">试卷与记录保存在浏览器中</small></div></div>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><span class="top-dot"></span>你的专属学习空间 <span class="top-divider">/</span> <span id="top-location">学习首页</span></div><div class="top-right"><span class="online-dot"></span> 专注当下，稳步前行 <span class="avatar">知</span></div></header>
+      <div id="app" class="content"></div>
+      <footer>为每一次认真准备而设计 <span>✳</span> 一步一步，抵达远方</footer>
+    </main>
+  </div>
+  <input id="pdf-input" type="file" accept=".pdf,application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden>
+  <input id="wrong-import" type="file" accept=".json,application/json" hidden>
+  <input id="progress-import" type="file" accept=".json,application/json" hidden>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="confirm-dialog"><div class="dialog-content"><div class="dialog-icon">?</div><h2 id="dialog-title"></h2><p id="dialog-message"></p><div class="dialog-actions"><button class="button secondary" id="dialog-cancel">再想想</button><button class="button primary" id="dialog-confirm">确认</button></div></div></dialog>
+</body>
+</html>
