@@ -12,6 +12,14 @@ let state = { papers: [], wrong: [], session: null, progress: [] };
 let view = 'home';
 let attemptReview = null;
 let wrongAnswerMode = false;
+let interviewSections = [];
+let interviewCategory = 'scenic';
+let interviewIndex = 0;
+let interviewMode = 'study';
+let interviewRevealed = false;
+let interviewReady = false;
+let interviewError = '';
+const interviewDrafts = new Map();
 let notice = '';
 let toastTimer;
 let wrongReady = !sharedMode;
@@ -703,8 +711,225 @@ async function installBundledPapers() {
   render();
 }
 
+async function extractInterviewParagraphs(base64) {
+  const zip = await JSZip.loadAsync(base64, { base64: true });
+  const entry = zip.file('word/document.xml');
+  if (!entry) throw new Error('interview.docx 缺少正文');
+  const xml = new DOMParser().parseFromString(await entry.async('string'), 'application/xml');
+  if (xml.querySelector('parsererror')) throw new Error('interview.docx 正文 XML 无效');
+  const ns = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const body = xml.getElementsByTagNameNS(ns, 'body')[0];
+  if (!body) throw new Error('interview.docx 缺少正文');
+  return Array.from(body.getElementsByTagNameNS(ns, 'p'), paragraph =>
+    Array.from(paragraph.getElementsByTagNameNS(ns, 't'), node => node.textContent).join('').trim()
+  ).filter(Boolean);
+}
+
+function interviewBlocks(paragraphs) {
+  const blocks = [];
+  let topic = '';
+  let current = null;
+  const appendText = text => {
+    if (!current) return;
+    if (!/[\u3400-\u9fff]/.test(current.prompt) && /[\u3400-\u9fff]/.test(text) &&
+      !blocks.some(block => block.number === current.number && /[\u3400-\u9fff]/.test(block.prompt)) &&
+      (/[？?]/.test(text) || (/[。]/.test(text) && /^(?:请|什么|哪|为何|为什么|如何|能否|是否|谈谈|说说|介绍|解释|简述|列举|描述|指出|你)/.test(text)))) {
+      const questionEnd = text.search(/[？?。]/);
+      const answer = text.slice(questionEnd + 1).replace(/^(?:答|答案)\s*[：:]\s*/, '').trim();
+      current = { number: current.number, prompt: text.slice(0, questionEnd + 1).trim(),
+        answer: answer ? [answer] : [], topic: current.topic };
+      blocks.push(current);
+      return;
+    }
+    const mixedLanguage = /[A-Za-z]/.test(current.prompt) && /[\u3400-\u9fff]/.test(text)
+      ? text.search(/(?<=[.!?])\s*(?=[\u3400-\u9fff])/u) : -1;
+    if (mixedLanguage <= 0) {
+      current.answer.push(text);
+      return;
+    }
+    current.answer.push(text.slice(0, mixedLanguage).trim());
+    const chineseText = text.slice(mixedLanguage).trim();
+    const answerMarker = chineseText.search(/(?:答|答案)\s*[：:]/);
+    const questionEnd = chineseText.search(/[？?。！!]/);
+    const splitAt = answerMarker >= 0 ? answerMarker : questionEnd >= 0 ? questionEnd + 1 : -1;
+    if (splitAt < 0) {
+      current.answer.push(chineseText);
+      return;
+    }
+    const chineseQuestion = chineseText.slice(0, splitAt).trim();
+    const chineseAnswer = answerMarker >= 0 ? chineseText.slice(answerMarker).replace(/^(?:答|答案)\s*[：:]\s*/, '').trim() : chineseText.slice(splitAt).trim();
+    if (chineseQuestion) {
+      current = { number: current.number, prompt: chineseQuestion, answer: chineseAnswer ? [chineseAnswer] : [], topic: current.topic };
+      blocks.push(current);
+    }
+  };
+  for (const text of paragraphs) {
+    if (/^[一二三四五六七八九十]+、/.test(text) && !/^[一二三四五六七八九十]+、(?:景点讲解提问|导游规范服务|特殊问题的处理方法|综合知识题|汉译英|英译汉)/.test(text)) {
+      topic = text.replace(/^[一二三四五六七八九十]+、/, '').trim();
+      continue;
+    }
+    const numbered = text.match(/^(\d{1,3})\s*[.．、)]\s*(.*)$/);
+    if (numbered) {
+      const source = numbered[2].trim();
+      const firstChinese = source.search(/[\u3400-\u9fff]/);
+      const englishQuestion = firstChinese >= 0 && /^[A-Za-z]/.test(source);
+      const prefix = englishQuestion ? source.slice(0, firstChinese).trim() : source;
+      const questionEnd = Math.max(prefix.lastIndexOf('?'), prefix.lastIndexOf('？'));
+      const prompt = questionEnd >= 0 ? prefix.slice(0, questionEnd + 1).trim() : prefix;
+      const inlineAnswer = questionEnd >= 0 ? source.slice(questionEnd + 1).replace(/^["”’)\]]+\s*/, '').trim() : '';
+      current = { number: Number(numbered[1]), prompt, answer: [], topic };
+      blocks.push(current);
+      if (inlineAnswer) appendText(inlineAnswer);
+    } else {
+      appendText(text);
+    }
+  }
+  return blocks;
+}
+
+function interviewTranslationMap(translations, category) {
+  const data = translations && translations[category];
+  if (!data || !Array.isArray(data.items)) throw new Error(`缺少 ${category} 分类的 interview 译文`);
+  return new Map(data.items.map(item => [Number(item.number), item]));
+}
+
+function parseInterviewBundle(paragraphs, translations) {
+  const definitions = [
+    { id: 'scenic', title: '景点讲解', heading: '一、景点讲解提问', next: '二、导游规范服务', kind: 'qa' },
+    { id: 'guide', title: '导游规范服务', heading: '二、导游规范服务', next: '三、特殊问题的处理方法', kind: 'qa' },
+    { id: 'special', title: '特殊问题处理', heading: '三、特殊问题的处理方法', next: '四、综合知识题', kind: 'qa' },
+    { id: 'knowledge', title: '综合知识', heading: '四、综合知识题', next: '五、汉译英30道题', kind: 'qa' },
+    { id: 'zh-en', title: '汉译英练习', heading: '五、汉译英30道题', next: '六、英译汉30道题', kind: 'zh-en' },
+    { id: 'en-zh', title: '英译汉练习', heading: '六、英译汉30道题', next: '', kind: 'en-zh' }
+  ];
+  return definitions.map(definition => {
+    const start = paragraphs.findIndex(text => text.includes(definition.heading));
+    const end = definition.next ? paragraphs.findIndex((text, index) => index > start && text.includes(definition.next)) : paragraphs.length;
+    if (start < 0 || end < 0) throw new Error(`interview.docx 缺少“${definition.heading}”章节`);
+    const blocks = interviewBlocks(paragraphs.slice(start + 1, end));
+    const translated = interviewTranslationMap(translations, definition.id);
+    let items;
+    if (definition.kind === 'qa') {
+      const byNumber = new Map();
+      for (const block of blocks) {
+        const item = byNumber.get(block.number) || { number: block.number, topic: block.topic, english: null, chinese: null };
+        if (/[\u3400-\u9fff]/.test(block.prompt)) item.chinese = block;
+        else item.english = block;
+        if (!item.topic) item.topic = block.topic;
+        byNumber.set(block.number, item);
+      }
+      items = [...byNumber.values()].sort((left, right) => left.number - right.number).map(item => {
+        const translation = translated.get(item.number);
+        if (!translation || !translation.translatedQuestion || !translation.translatedAnswer) {
+          throw new Error(`${definition.title}第 ${item.number} 题缺少译文`);
+        }
+        return {
+          number: item.number,
+          topic: item.topic,
+          kind: 'qa',
+          chineseQuestion: item.chinese && item.chinese.prompt,
+          translatedQuestion: translation.translatedQuestion,
+          documentEnglishQuestion: item.english && item.english.prompt,
+          chineseAnswer: item.chinese && item.chinese.answer.join('\n'),
+          documentEnglishAnswer: item.english && item.english.answer.join('\n'),
+          translatedAnswer: translation.translatedAnswer
+        };
+      });
+    } else if (definition.kind === 'zh-en') {
+      items = blocks.map(block => {
+        const translation = translated.get(block.number);
+        if (!translation || !translation.translatedAnswer) throw new Error(`${definition.title}第 ${block.number} 题缺少译文`);
+        return {
+          number: block.number,
+          kind: definition.kind,
+          topic: '',
+          chineseQuestion: block.prompt,
+          translatedQuestion: '',
+          documentEnglishQuestion: '',
+          chineseAnswer: '',
+          documentEnglishAnswer: block.answer.join('\n'),
+          translatedAnswer: translation.translatedAnswer,
+          chineseSource: block.prompt,
+          documentChineseAnswer: ''
+        };
+      });
+    } else {
+      const byNumber = new Map();
+      for (const block of blocks) {
+        const item = byNumber.get(block.number) || { number: block.number, english: null, chinese: null };
+        if (/[\u3400-\u9fff]/.test(block.prompt)) item.chinese = block;
+        else item.english = block;
+        byNumber.set(block.number, item);
+      }
+      items = [...byNumber.values()].sort((left, right) => left.number - right.number).map(item => {
+        const translation = translated.get(item.number);
+        if (!translation || !translation.translatedQuestion) throw new Error(`${definition.title}第 ${item.number} 题缺少译文`);
+        return {
+          number: item.number,
+          kind: definition.kind,
+          topic: '',
+          chineseQuestion: translation.translatedQuestion,
+          translatedQuestion: translation.translatedQuestion,
+          documentEnglishQuestion: item.english && item.english.prompt,
+          chineseAnswer: item.chinese && item.chinese.prompt,
+          documentEnglishAnswer: '',
+          translatedAnswer: translation.translatedAnswer || '',
+          chineseSource: '',
+          documentChineseAnswer: item.chinese && item.chinese.prompt
+        };
+      });
+    }
+    if (!items.length) throw new Error(`${definition.title}没有识别到题目`);
+    return { id: definition.id, title: definition.title, kind: definition.kind, items };
+  });
+}
+
+async function installBundledInterview() {
+  try {
+    const bundle = window.BUNDLED_INTERVIEW;
+    if (!bundle || typeof bundle.data !== 'string' || !bundle.translations) throw new Error('未找到 bundled-interview.js 或翻译数据');
+    interviewSections = parseInterviewBundle(await extractInterviewParagraphs(bundle.data), bundle.translations);
+    interviewReady = true;
+  } catch (error) {
+    interviewError = error.message;
+    notify(`Interview 栏目加载失败：${error.message}`, true);
+  }
+  if (view === 'interview') render();
+}
+
 function heading(kicker, title, description, right = '') {
   return `<div class="page-heading"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p>${description}</p></div>${right}</div>`;
+}
+
+function interviewAnswer(item) {
+  if (item.kind === 'zh-en') {
+    return `<div class="interview-answer"><section><strong>中文原文</strong><p>${escapeHtml(item.chineseSource)}</p></section><section><strong>我的英文译文</strong><p>${escapeHtml(item.translatedAnswer)}</p></section><section><strong>文档英文版</strong><p>${escapeHtml(item.documentEnglishAnswer)}</p></section></div>`;
+  }
+  if (item.kind === 'en-zh') {
+    return `<div class="interview-answer"><section><strong>英文原文</strong><p>${escapeHtml(item.documentEnglishQuestion)}</p></section><section><strong>我的中文译文</strong><p>${escapeHtml(item.translatedQuestion)}</p></section><section><strong>文档中文版</strong><p>${escapeHtml(item.documentChineseAnswer)}</p></section></div>`;
+  }
+  return `<div class="interview-answer"><section><strong>我的英文译文（以中文为准）</strong><p>${escapeHtml(item.translatedAnswer)}</p></section><section><strong>文档英文版</strong><p>${escapeHtml(item.documentEnglishAnswer || '文档未提供')}</p></section><section><strong>中文版</strong><p>${escapeHtml(item.chineseAnswer || '文档未提供')}</p></section></div>`;
+}
+
+function interviewView() {
+  if (!interviewReady) return `${heading('INTERVIEW', 'Interview', '面试问答与双语口译练习。')}${interviewError ? `<div class="notice" role="alert">${escapeHtml(interviewError)}</div>` : '<div class="empty-card">正在加载 interview 题库…</div>'}`;
+  const section = interviewSections.find(item => item.id === interviewCategory) || interviewSections[0];
+  const item = section.items[Math.min(interviewIndex, section.items.length - 1)];
+  const revealed = interviewMode === 'answers' || interviewRevealed;
+  const questionText = item.kind === 'en-zh' ? item.documentEnglishQuestion : item.chineseQuestion;
+  const draftKey = `${section.id}:${item.number}`;
+  const modeButtons = `<div class="interview-mode-actions"><button class="button ${interviewMode === 'study' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="study" aria-pressed="${interviewMode === 'study'}">学习模式</button><button class="button ${interviewMode === 'answers' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="answers" aria-pressed="${interviewMode === 'answers'}">显示答案模式</button></div>`;
+  return `${heading('INTERVIEW', 'Interview', '以中文题目为基础，练习作答并对照双语答案。', modeButtons)}
+    <div class="interview-toolbar"><label for="interview-category">题目分类</label><select id="interview-category">${interviewSections.map(value => `<option value="${value.id}" ${value.id === section.id ? 'selected' : ''}>${escapeHtml(value.title)}（${value.items.length}）</option>`).join('')}</select><span>${interviewIndex + 1} / ${section.items.length}</span></div>
+    <div class="interview-layout"><section class="panel interview-main">
+      <div class="interview-question-head"><span class="tag">${escapeHtml(section.title)}${item.topic ? ` · ${escapeHtml(item.topic)}` : ''}</span><strong>第 ${item.number} 题</strong></div>
+      <h2 class="interview-question">${escapeHtml(questionText || '文档未提供中文题目')}</h2>
+      ${item.kind === 'qa' && item.translatedQuestion ? `<div class="interview-translation"><strong>我的英文题目译文</strong><p>${escapeHtml(item.translatedQuestion)}</p></div>` : ''}
+      ${item.kind === 'qa' && item.documentEnglishQuestion ? `<details class="interview-document"><summary>查看文档英文题目</summary><p>${escapeHtml(item.documentEnglishQuestion)}</p></details>` : ''}
+      ${interviewMode === 'study' ? `<label class="interview-draft-label" for="interview-draft">先试着作答</label><textarea id="interview-draft" placeholder="可在这里整理你的口头答案…" data-draft-key="${escapeHtml(draftKey)}">${escapeHtml(interviewDrafts.get(draftKey) || '')}</textarea>` : ''}
+      ${revealed ? interviewAnswer(item) : '<div class="interview-hidden-answer">先独立思考，再显示参考答案。</div>'}
+      <div class="interview-actions"><button class="button secondary" data-action="interview-prev" ${interviewIndex === 0 ? 'disabled' : ''}>← 上一题</button>${interviewMode === 'study' && !interviewRevealed ? '<button class="button primary" data-action="interview-reveal">显示参考答案</button>' : ''}<button class="button secondary" data-action="interview-next" ${interviewIndex === section.items.length - 1 ? 'disabled' : ''}>下一题 →</button></div>
+    </section><aside class="panel interview-side"><h3>题目选择</h3><div class="interview-palette">${section.items.map((entry, index) => `<button data-action="interview-jump" data-index="${index}" class="${index === interviewIndex ? 'current' : ''}" aria-label="第 ${entry.number} 题">${entry.number}</button>`).join('')}</div></aside></div>`;
 }
 
 function paperCard(paper) {
@@ -790,9 +1015,9 @@ function render() {
   document.querySelector('#paper-count').textContent = state.papers.length;
   document.querySelector('#wrong-count').textContent = state.wrong.length;
   document.querySelectorAll('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.view === view));
-  document.querySelector('#top-location').textContent = ({ home: '学习首页', papers: '我的试卷', wrong: '错题本', exam: '专注练习' })[view];
+  document.querySelector('#top-location').textContent = ({ home: '学习首页', papers: '我的试卷', interview: 'Interview', wrong: '错题本', exam: '专注练习' })[view];
   document.querySelector('#storage-description').textContent = sharedMode ? '错题和试卷进度保存在本机' : '错题和进度保存在当前浏览器中';
-  app.innerHTML = view === 'home' ? home() : view === 'papers' ? papersView() : view === 'wrong' ? wrongView() : examView();
+  app.innerHTML = view === 'home' ? home() : view === 'papers' ? papersView() : view === 'interview' ? interviewView() : view === 'wrong' ? wrongView() : examView();
 }
 
 function confirmAction(title, message, buttonText) {
@@ -843,6 +1068,18 @@ document.addEventListener('click', async event => {
   else if (action === 'export-wrong') exportWrong();
   else if (action === 'import-wrong') wrongInput.click();
   else if (action === 'wrong-answer-mode') { wrongAnswerMode = !wrongAnswerMode; render(); }
+  else if (action === 'interview-mode') { interviewMode = button.dataset.mode; interviewRevealed = false; render(); }
+  else if (action === 'interview-reveal') { interviewRevealed = true; render(); }
+  else if (action === 'interview-prev' || action === 'interview-next' || action === 'interview-jump') {
+    const section = interviewSections.find(item => item.id === interviewCategory);
+    if (section) {
+      interviewIndex = action === 'interview-prev' ? Math.max(0, interviewIndex - 1)
+        : action === 'interview-next' ? Math.min(section.items.length - 1, interviewIndex + 1)
+          : Math.min(section.items.length - 1, Number(button.dataset.index));
+      interviewRevealed = false;
+      render();
+    }
+  }
   else if (action === 'view-attempt') {
     const paper = state.papers.find(item => item.id === button.dataset.id);
     const progress = paper && progressFor(paper.id);
@@ -932,7 +1169,12 @@ document.addEventListener('click', async event => {
 });
 
 document.addEventListener('change', async event => {
-  if (event.target === input) {
+  if (event.target.id === 'interview-category') {
+    interviewCategory = event.target.value;
+    interviewIndex = 0;
+    interviewRevealed = false;
+    render();
+  } else if (event.target === input) {
     const files = Array.from(input.files);
     input.value = '';
     importFiles(files);
@@ -957,6 +1199,12 @@ document.addEventListener('change', async event => {
   }
 });
 
+document.addEventListener('input', event => {
+  if (event.target.id === 'interview-draft') {
+    interviewDrafts.set(event.target.dataset.draftKey, event.target.value);
+  }
+});
+
 if (!sharedMode && !state.progressMigrationDone) {
   const legacy = legacyProgress();
   if (legacy && !progressFor(legacy.paperId)) state.progress.push(legacy);
@@ -970,6 +1218,7 @@ if (!sharedMode && !state.progressMigrationDone) {
 }
 render();
 installBundledPapers();
+installBundledInterview();
 if (sharedMode) {
   refreshWrong();
   refreshProgress();

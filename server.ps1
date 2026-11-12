@@ -182,6 +182,7 @@ try {
                 $staticFiles = @{
                     '/' = 'index.html'; '/index.html' = 'index.html'; '/app.js' = 'app.js'
                     '/style.css' = 'style.css'; '/review.css' = 'review.css'; '/bundled-papers.js' = 'bundled-papers.js'
+                    '/bundled-interview.js' = 'bundled-interview.js'
                     '/vendor/pdf.min.js' = 'vendor\pdf.min.js'
                     '/vendor/pdf.worker.min.js' = 'vendor\pdf.worker.min.js'
                     '/vendor/jszip.min.js' = 'vendor\jszip.min.js'

@@ -16,3 +16,29 @@
   .palette button{height:30px}
   .exam-side .full{padding:9px}
 }
+.interview-mode-actions{display:flex;gap:8px;flex-wrap:wrap}
+.interview-toolbar{display:flex;align-items:center;gap:12px;margin:0 0 16px;color:#7e9084;font-size:12px}
+.interview-toolbar select{max-width:min(420px,65%);border:1px solid #e0e8e0;border-radius:8px;background:#fff;color:#456151;padding:9px 12px;font:inherit}
+.interview-toolbar span{margin-left:auto}
+.interview-layout{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:18px}
+.interview-main{padding:27px 30px}
+.interview-question-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.interview-question-head>strong{font-size:12px;color:#849589}
+.interview-question{font-size:18px;line-height:1.9;color:#2c4033;white-space:pre-wrap;margin:20px 0}
+.interview-translation,.interview-document,.interview-hidden-answer{border:1px solid #e9eee9;border-radius:9px;padding:13px 15px;margin:14px 0;color:#586c5e;font-size:13px;line-height:1.8}
+.interview-translation strong,.interview-answer strong{font-size:12px;color:#50775b}
+.interview-translation p,.interview-document p,.interview-answer p{margin:7px 0 0;white-space:pre-wrap}
+.interview-document summary{cursor:pointer;color:#778b7d}
+.interview-draft-label{display:block;color:#718579;font-size:12px;margin:18px 0 7px}
+.interview-main textarea{width:100%;min-height:110px;resize:vertical;border:1px solid #e2e9e2;border-radius:9px;padding:12px;color:#43594a;background:#fbfcfa;font:inherit;font-size:13px;line-height:1.7}
+.interview-answer{display:grid;gap:10px;margin-top:18px}
+.interview-answer section{border:1px solid #e8eee8;border-radius:9px;background:#fbfcfa;padding:13px 15px;color:#586c5e;font-size:13px;line-height:1.8}
+.interview-answer section:first-child{border-color:#cddfcf;background:#f4f8f2}
+.interview-actions{display:flex;justify-content:space-between;gap:9px;margin-top:22px}
+.interview-side{padding:20px}
+.interview-side h3{margin:0;color:#405648;font-size:14px}
+.interview-palette{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin-top:14px;max-height:420px;overflow:auto}
+.interview-palette button{height:34px;border:1px solid #e5ebe5;border-radius:7px;background:#fff;color:#809187;font-size:11px}
+.interview-palette button.current{border-color:#789d7e;background:#edf5ed;color:#315f49;font-weight:700}
+@media(max-width:900px){.interview-layout{grid-template-columns:minmax(0,1fr)}.interview-side{order:-1}.interview-palette{grid-template-columns:repeat(10,minmax(0,1fr));max-height:90px}}
+@media(max-width:650px){.interview-mode-actions{width:100%}.interview-mode-actions .button{flex:1}.interview-toolbar{flex-wrap:wrap}.interview-toolbar select{flex:1;max-width:none}.interview-main{padding:20px 16px}.interview-question{font-size:16px}.interview-palette{grid-template-columns:repeat(8,minmax(0,1fr));max-height:80px}}

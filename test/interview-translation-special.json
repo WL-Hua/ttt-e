@@ -1,0 +1,205 @@
+{
+  "category": "special",
+  "items": [
+    {
+      "number": 1,
+      "translatedQuestion": "While a tour group is sightseeing at an attraction, one of the older tourists is discovered to be missing. What should the tour guide do?",
+      "translatedAnswer": "(1) Find out what happened and search promptly. Usually, the national guide and tour leader search separately while the local guide continues the tour with the other tourists.\n(2) Seek help from the local police station and the attraction’s management.\n(3) Contact the hotel to ask whether the tourist has returned there.\n(4) Report the incident to the travel agency.\n(5) Take care of the follow-up arrangements.\n(6) Write an incident report."
+    },
+    {
+      "number": 2,
+      "translatedQuestion": "A tourist in the group is found to have an infectious disease. How should the tour guide handle the situation?",
+      "translatedAnswer": "(1) Find out in detail what the tourist has reported and establish the patient’s health condition.\n(2) Report the matter to the travel agency’s management and the local epidemic-prevention and health-quarantine authorities.\n(3) If the authorities consider an examination necessary, obtain the agreement of the tour leader and the patient, then take the patient to a local epidemic-prevention station for a serum test and examination.\n(4) If the patient is confirmed to have an infectious disease, follow the authorities’ advice on isolation or other measures.\n(5) If the patient is a visitor from abroad, explain to the patient and tour leader that, under the regulations in China, the patient must leave the country early, and help complete the necessary procedures.\n(6) Submit a written report to the relevant parties detailing the circumstances and how the matter was handled."
+    },
+    {
+      "number": 3,
+      "translatedQuestion": "A tourist in the group suffers a heart attack. How should the local guide respond?",
+      "translatedAnswer": "(1) If it is confirmed to be a heart attack, have the patient lie flat where they are, with their head slightly raised. Ask a family member to retrieve the patient’s emergency medication and give it to them to help ease the condition.\n(2) Call an ambulance immediately or take the patient to the nearest hospital.\n(3) Notify the travel agency and ask it to send someone to assist.\n(4) While the hospital is treating the patient, ask a family member to remain there.\n(5) The local guide should visit the hospital from time to time. If the patient is a member of an inbound tour group, help arrange a separate visa and book return transportation to the patient’s home country, among other necessary arrangements.\n(6) Arrange activities for the rest of the group."
+    },
+    {
+      "number": 4,
+      "translatedQuestion": "During free time, a tourist in the group is robbed by criminals. What should you do as the group’s tour guide?",
+      "translatedAnswer": "(1) Report the incident to the police immediately by calling 110. Give the time, location, and circumstances of the incident; describe the suspect or suspects; and provide the victim’s name and group number, along with the names, models, and identifying features of the stolen property.\n(2) Report the incident to the travel agency promptly and ask for instructions.\n(3) Reassure the tourists.\n(4) Write a report stating the nature of the case, the measures taken, and the victim’s response and requests.\n(5) Assist the relevant authorities with follow-up arrangements."
+    },
+    {
+      "number": 5,
+      "translatedQuestion": "What fire-safety precautions should tour guides take when checking tourists into a hotel so they can evacuate quickly if a fire breaks out?",
+      "translatedAnswer": "(1) Learn the locations of the hotel floor’s fire doors, emergency exits, and stairways, as well as the safe evacuation routes, and explain them to the tourists.\n(2) Memorize the fire-service number (119) and the room numbers of the tour leader and tourists."
+    },
+    {
+      "number": 6,
+      "translatedQuestion": "A fire breaks out in the hotel, two floors below the rooms occupied by the tour group. How should the tour guide direct the tourists to protect themselves?",
+      "translatedAnswer": "Do not let the tourists use the elevator or jump from the building in an attempt to escape. The guide should stay calm, assess the fire, and direct everyone to protect themselves:\n(1) If clothing catches fire, roll on the ground or smother the flames with heavy clothing.\n(2) If it is necessary to pass through thick smoke, cover the body with wet clothing, cover the nose and mouth, and crawl close to the floor along a wall.\n(3) If fire blocks the door and escape is impossible, block gaps around the door with wet clothing or bedding, pour water on them to cool the area, and wait for rescue.\n(4) Wave brightly colored clothing to attract rescuers’ attention."
+    },
+    {
+      "number": 7,
+      "translatedQuestion": "How should tour guides respond if a tour group suffers a food-poisoning incident?",
+      "translatedAnswer": "(1) Try to induce vomiting in those who have been poisoned and have them drink plenty of water to help flush out the toxins.\n(2) Get the patients to a hospital as quickly as possible and ask the doctor to issue a medical certificate.\n(3) Report the incident to the local receiving travel agency and seek to hold the restaurant responsible."
+    },
+    {
+      "number": 8,
+      "translatedQuestion": "The tour group asks at short notice to change a prearranged Western meal to a Chinese meal. How should the local guide handle the request?",
+      "translatedAnswer": "(1) If the request is made at least three hours before the meal, the local guide should do their best to contact the restaurant and handle the change in accordance with the relevant rules.\n(2) If the request is made close to mealtime, it will generally not be accepted, but the guide should explain the reason.\n(3) If the tourists insist on changing the meal, the guide may suggest that they order dishes themselves and pay the cost.\n(4) Requests for extra dishes or drinks should be accommodated, with the tourists paying the additional cost."
+    },
+    {
+      "number": 9,
+      "translatedQuestion": "When checking a tour group into a hotel, the local guide discovers that some of the reserved standard twin rooms have been replaced with triple rooms. If you were the local guide, what would you do?",
+      "translatedAnswer": "(1) Although the triple rooms have the same number of beds, they do not meet the standard for twin rooms specified in the travel agreement. The local receiving travel agency should arrange replacements.\n(2) The local guide should negotiate with the hotel to restore the twin rooms. If this hotel cannot do so, consider a nearby hotel.\n(3) If it is genuinely impossible to make the change, explain the situation to the tourists, ask for their understanding, and compensate them for the difference in price.\n(4) Persuade the tourists to accept the rooms and provide compensation afterward, both material (such as drinks, extra dishes, or souvenirs) and in service (by providing better-quality service)."
+    },
+    {
+      "number": 10,
+      "translatedQuestion": "A foreign visitor asks the tour guide to buy an item for them and ship it back to their home country. How should the guide handle this request?",
+      "translatedAnswer": "(1) In general, politely decline.\n(2) If it is not possible to decline, seek approval from a supervisor.\n(3) If the request is accepted, handle it carefully: collect enough money from the visitor to cover the purchase and shipping, buy and ship the item, and afterward send the visitor the receipt, shipping form, and shipping-fee receipt. The travel agency should retain copies for inspection."
+    },
+    {
+      "number": 11,
+      "translatedQuestion": "How should tour guides help prevent tourists from becoming ill?",
+      "translatedAnswer": "(1) Carefully assess the group and plan the itinerary with regard to the age and physical condition of most participants, allowing for an appropriate balance between activity and rest.\n(2) Remind tourists to observe food and drinking-water hygiene and not to drink raw or unclean water.\n(3) Keep up with the weather forecast and remind tourists to add or remove clothing or bring rain gear as conditions change. In dry seasons, remind them to drink more water and eat more fruit."
+    },
+    {
+      "number": 12,
+      "translatedQuestion": "A tour group that was due to arrive this morning has, for some reason, been delayed until before dinner tomorrow, shortening its itinerary by a day and a half. What should the local guide do?",
+      "translatedAnswer": "(1) First, notify the relevant service providers to cancel today’s accommodation and meals.\n(2) Book accommodation, meals, and transportation for tomorrow.\n(3) Redraw the group’s local itinerary, preserving as many of the originally planned principal sightseeing activities as possible.\n(4) If time is too limited, give priority to the attractions that are most representative and distinctive of the area."
+    },
+    {
+      "number": 13,
+      "translatedQuestion": "Because tickets are scarce, the travel agency has to put the tour group on an extra flight that will leave the area earlier than planned. What should the local guide do to gain the tourists’ understanding?",
+      "translatedAnswer": "(1) First seek the cooperation of the national guide and tour leader and reach agreement with them.\n(2) Work with influential members of the group.\n(3) Explain the situation honestly to the tourists and apologize sincerely, seeking their understanding.\n(4) Offer appropriate material compensation.\n(5) Use the limited time available to take the tourists to attractions on the itinerary."
+    },
+    {
+      "number": 14,
+      "translatedQuestion": "A road closure forces the tour group to cancel a day’s trip to a particular destination, leaving the tourists very disappointed. How should the local guide handle the situation?",
+      "translatedAnswer": "(1) Arrange an alternative activity.\n(2) Rekindle the tourists’ interest with an engaging introduction, novel content, and the best possible arrangements.\n(3) Ask the national guide to report the situation to the tour operator that organized the group and obtain its decision."
+    },
+    {
+      "number": 15,
+      "translatedQuestion": "When you arrive at the station, the tour group you are to meet has already been waiting outside for a long time. The tourists are very unhappy, and the tour leader accuses you of failing to meet the group. As the local guide, what should you do?",
+      "translatedAnswer": "(1) Apologize promptly to the tour leader, national guide, and tourists.\n(2) Explain the situation truthfully and show that you are committed to doing a good job as their guide.\n(3) Take steps to make up for the problem, carry out the reception plan successfully, and earn the tourists’ understanding.\n(4) If necessary, offer the tourists reasonable material compensation."
+    },
+    {
+      "number": 16,
+      "translatedQuestion": "A tourist in the group says they do not want to share a twin room with anyone else and asks for a room alone. How would you handle the request appropriately?",
+      "translatedAnswer": "(1) If the request is due to a conflict with the other occupant or differences in living habits, ask the tour leader to mediate or arrange a change within the group.\n(2) If mediation or reassignment does not work and the hotel has a vacant room, the request may be granted. However, explain in advance that the tourist must pay the room charge themselves; generally, the person who requests a single room pays for it."
+    },
+    {
+      "number": 17,
+      "translatedQuestion": "If a tour group misses its flight, how should the tour guide handle the incident?",
+      "translatedAnswer": "(1) Immediately report the matter to the travel agency’s management and the relevant departments and request assistance.\n(2) Contact the airport as soon as possible and arrange for the tourists to leave the current location promptly.\n(3) Reassure the tourists and arrange accommodation, meals, sightseeing, and other necessary matters.\n(4) Notify the next stop promptly and make corresponding adjustments to the itinerary.\n(5) Apologize to the tourists.\n(6) Write an incident report, investigate the cause and determine responsibility. The responsible party should bear the financial losses."
+    },
+    {
+      "number": 18,
+      "translatedQuestion": "While sightseeing in Guangzhou, a Chinese American in the tour group accidentally loses their documents. They cannot be found despite an extensive search. As the local guide, how should you handle the matter?",
+      "translatedAnswer": "Help the visitor replace their passport and visa; the visitor must pay the costs of obtaining the documents. The procedure is:\n(1) The travel agency first issues a certificate of loss, and the visitor prepares photographs.\n(2) The visitor takes the certificate to the Foreigners’ Entry-Exit Administration Office of the Guangzhou Public Security Bureau to report the loss and obtain a certificate.\n(3) The visitor takes the police certificate to the U.S. Consulate General in Guangzhou and applies for a replacement U.S. passport.\n(4) After receiving the new passport, the visitor returns to the Guangzhou Public Security Bureau to replace the Chinese visa."
+    },
+    {
+      "number": 19,
+      "translatedQuestion": "While sightseeing in Guangzhou, a Chinese expatriate from the United States in the tour group accidentally loses their documents, which cannot be found despite an extensive search. As the local guide, how should you help them replace their passport and visa?",
+      "translatedAnswer": "(1) Ask the visitor to prepare photographs.\n(2) Ask the local receiving travel agency to issue a certificate of loss.\n(3) The visitor takes the certificate of loss to the Guangdong Provincial Public Security Department to report the loss and apply for a replacement Chinese passport.\n(4) With the new passport, the visitor goes to the U.S. Consulate General in Guangzhou to obtain a visa for entry into the United States."
+    },
+    {
+      "number": 20,
+      "translatedQuestion": "A domestic tourist in the group accidentally loses their ID card during the trip, and the group must travel by air. How should the tour guide handle the matter?",
+      "translatedAnswer": "(1) The local travel agency issues a certificate of loss.\n(2) The tourist goes in person to the local public security bureau with the certificate to report the loss and request an identity certificate.\n(3) If an identity document cannot be issued, arrange for the tourist to use another means of transportation. The tourist initially pays the transportation cost; after the trip, settle it reasonably in accordance with the agreement or relevant regulations."
+    },
+    {
+      "number": 21,
+      "translatedQuestion": "A foreign visitor’s baggage is lost while they are travelling to China, and they discover the loss only after arriving at a Chinese airport. How should the local guide assist?",
+      "translatedAnswer": "(1) Take the visitor to the airport’s lost-property office to report the missing baggage and complete the claim and recovery procedures.\n(2) During local sightseeing, the local guide should call from time to time to ask about the search for the baggage.\n(3) If the baggage cannot be found promptly, help the visitor purchase essential daily necessities.\n(4) If the baggage is confirmed lost, help the visitor claim compensation from the relevant airline."
+    },
+    {
+      "number": 22,
+      "translatedQuestion": "Before a tour group leaves an area, its members express strong dissatisfaction with the food there. What remedial steps should the guide take?",
+      "translatedAnswer": "(1) Listen carefully to the tourists’ comments and make a record.\n(2) Inform the local travel agency and hotel of the situation and suggest improvements. If possible, ask them to apologize to the tourists and take necessary remedial measures.\n(3) Find out about the tourists’ dining habits and inform the travel agency at the next stop so it can prepare special services in advance."
+    },
+    {
+      "number": 23,
+      "translatedQuestion": "What care should the national guide provide to tourists in the group who suffer from motion sickness when travelling by car, plane, or boat?",
+      "translatedAnswer": "(1) Remind those who suffer from motion sickness not to travel on a full stomach and to take appropriate medication before travelling. They should preferably use their own medication, and be reminded to check its contraindications; many motion-sickness medicines are unsuitable for people with glaucoma.\n(2) Whenever possible, arrange for them to sit in a relatively stable seat.\n(3) On a long journey, if a tourist becomes motion-sick in a plane, vehicle, or boat, the guide may ask a crew member to help care for them."
+    },
+    {
+      "number": 24,
+      "translatedQuestion": "A tourist in the group collapses from heatstroke. What measures should the tour guide take?",
+      "translatedAnswer": "(1) Move the patient to a shady place, have them lie flat, loosen their collar, and loosen their belt.\n(2) If possible, give them a drink containing salt or necessary heatstroke medication. If they have a fever, cool them by wiping their body with cold water or alcohol.\n(3) Once the symptoms ease, have them sit or lie quietly and rest.\n(4) After providing necessary first aid, take anyone suffering severe heatstroke to a hospital immediately."
+    },
+    {
+      "number": 25,
+      "translatedQuestion": "When a tour group checks into a hotel, what should the guide do to protect tourists from harm and protect their belongings?",
+      "translatedAnswer": "(1) After check-in, advise tourists to put valuables in the hotel safe rather than carrying them around or leaving them in their rooms.\n(2) Remind tourists to lock their doors when entering or leaving their rooms and not to give their room number to strangers. They should not let strangers or people claiming to be hotel repair workers enter their rooms freely, and should be especially cautious about opening the door at night. They should not exchange foreign currency with private individuals."
+    },
+    {
+      "number": 26,
+      "translatedQuestion": "The local guide arrives at the airport on time as scheduled to meet a tour group, but the group does not arrive. What should the guide do?",
+      "translatedAnswer": "(1) Immediately contact the relevant department of the guide’s travel agency to find out the reason.\n(2) If the group’s arrival will be delayed only briefly, remain at the meeting point and continue waiting.\n(3) If the delay will be lengthy, follow the agency’s arrangements and make new plans for receiving the group."
+    },
+    {
+      "number": 27,
+      "translatedQuestion": "A local guide meets a group at the airport as scheduled, but only discovers on arrival at the hotel that it is not the group they were supposed to meet. What should the guide do?",
+      "translatedAnswer": "(1) Find out what caused the mistake.\n(2) Determine where the guide’s assigned group is. If a guide from another travel agency picked it up, contact them as soon as possible and exchange the groups immediately.\n(3) If a guide from the same travel agency picked up the assigned group, the local guide generally need not switch groups, but the national guide must be changed.\n(4) Explain the situation truthfully to the tourists and apologize sincerely."
+    },
+    {
+      "number": 28,
+      "translatedQuestion": "After completing the itinerary in China under the group’s original reception plan, several foreign tourists ask to stay and continue sightseeing. How should the national guide handle the request?",
+      "translatedAnswer": "(1) After consulting the travel agency, provide necessary assistance if approved. Accompany the tourists to the local public security bureau with their own passports, a letter from the travel agency, and the group’s collective visa to apply for separate visas and visa extensions. Help them rebook transportation tickets and accommodation. The tourists must pay the costs.\n(2) If they want the travel agency to continue providing services such as guiding, they must sign a separate contract."
+    },
+    {
+      "number": 29,
+      "translatedQuestion": "A tour bus accidentally overturns, leaving three people seriously injured and many others slightly injured. If you were the group’s tour guide, what measures would you take?",
+      "translatedAnswer": "(1) Organize rescue efforts immediately.\n(2) Protect the scene and report the incident to the police immediately.\n(3) Report the matter promptly to the travel agency.\n(4) Reassure the tourists in the group.\n(5) Write a report on the incident."
+    },
+    {
+      "number": 30,
+      "translatedQuestion": "What should tour guides do to help prevent traffic accidents during a tour?",
+      "translatedAnswer": "(1) Before departure, remind the driver to inspect the vehicle and promptly address any hazards or replace the vehicle.\n(2) Allow sufficient time in the itinerary; do not urge the driver to speed or violate traffic rules to stay on schedule.\n(3) When weather, traffic, or road conditions are poor, remind the driver to take care while driving.\n(4) Do not allow anyone who is not the assigned driver to drive the vehicle.\n(5) Remind the driver not to drink alcohol."
+    },
+    {
+      "number": 31,
+      "translatedQuestion": "How should a tour guide help prevent a tour group from suffering food poisoning?",
+      "translatedAnswer": "(1) Arrange for the group to eat only at designated restaurants.\n(2) Remind tourists not to buy food from street stalls.\n(3) If food is found to be unclean or spoiled during a meal, immediately ask for it to be replaced."
+    },
+    {
+      "number": 32,
+      "translatedQuestion": "A tourist from Taiwan discovers that their travel document is missing. How should the local guide handle the situation?",
+      "translatedAnswer": "The local receiving travel agency should issue a certificate. The tourist should take the certificate, documents and other materials that establish their identity, and photographs to the exit-entry administration office of the municipal public security bureau where the document was lost to report the loss. After verifying the information, the bureau will issue a single-use entry-exit permit."
+    },
+    {
+      "number": 33,
+      "translatedQuestion": "A tourist cannot find their baggage at the airport carousel. What should the national guide do?",
+      "translatedAnswer": "(1) Take the tourist to the lost-property office to report the missing baggage and complete the claim and recovery procedures. The tourist should present their air ticket and baggage tag and fill out a missing-baggage form.\n(2) Report the matter to the travel agency’s management immediately and ask it to arrange for the relevant departments and staff to contact the airport, the travel agency at the previous stop, the airline, and other parties to search actively."
+    },
+    {
+      "number": 34,
+      "translatedQuestion": "A married couple in the tour group asks to eat in their hotel room. How should the tour guide handle the request?",
+      "translatedAnswer": "(1) Explain the situation patiently and ask the tour leader to encourage them to eat with the group.\n(2) If they still insist on eating in their room, tell them to contact the restaurant directly to arrange room service. They must pay for the meal, and the comprehensive service fee will not be refunded."
+    },
+    {
+      "number": 35,
+      "translatedQuestion": "A tourist feels unwell and wants to stay at the hotel alone to rest instead of joining the group’s activities. What should the guide do?",
+      "translatedAnswer": "(1) Let the tourist decide for themselves and do not pressure them to join the group.\n(2) Notify the restaurant to arrange lunch and, if necessary, provide room service.\n(3) Tell the tourist how to contact the hotel clinic.\n(4) Ask the room attendant to look after the tourist.\n(5) After returning from the excursion, check on the tourist to show concern."
+    },
+    {
+      "number": 36,
+      "translatedQuestion": "A foreign tourist has an urgent matter and asks to leave the tour early and return home. How should the tour guide handle the request?",
+      "translatedAnswer": "(1) Report the tourist’s request to the travel agency immediately. After the receiving agency consults the tour operator that organized the group, the request may be granted. Under the travel agreement, the cost of comprehensive services not used may be refunded in part or not at all.\n(2) The guide should also help the tourist rebook transportation, obtain a separate visa, and complete other departure procedures. The tourist must pay the costs."
+    },
+    {
+      "number": 37,
+      "translatedQuestion": "While the group is sightseeing, a photography enthusiast asks to walk separately from the group. You are the local guide. How would you make suitable arrangements?",
+      "translatedAnswer": "If circumstances permit—for example, if the attraction is not crowded and order is not disrupted—the request may be accommodated. Remind the tourist of the meeting time and place and the tour vehicle’s number. If necessary, leave the tourist a note stating the meeting time and place, vehicle number, and the hotel’s name and telephone number."
+    },
+    {
+      "number": 38,
+      "translatedQuestion": "A tourist asks to return or exchange an item after buying it in a shop. Should the tour guide help?",
+      "translatedAnswer": "The tour guide should actively assist and, if necessary, accompany the tourist to the shop."
+    },
+    {
+      "number": 39,
+      "translatedQuestion": "A train cannot stop wherever passengers wish. If a tourist becomes seriously ill while the group is travelling by train, what should the national guide do?",
+      "translatedAnswer": "Immediately ask the train crew to find a doctor on board to treat the tourist, and notify the emergency center and travel agency at the next station so they can prepare to meet the train and provide emergency care."
+    },
+    {
+      "number": 40,
+      "translatedQuestion": "A tourist asks the guide to organize a visit to a nearby beach for swimming. What should the guide do?",
+      "translatedAnswer": "(1) Persuade the tourists not to swim in natural waters without safety measures.\n(2) If necessary, arrange for them to swim at a pool instead.\n(3) The guide must not leave the rest of the group unattended to accompany only a few people swimming.\n(4) Even at a swimming pool, remind swimmers to take care for their safety and avoid drowning."
+    }
+  ]
+}
