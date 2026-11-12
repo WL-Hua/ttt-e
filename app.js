@@ -353,17 +353,20 @@ function parsePaper(text, filename) {
       continue;
     }
     const start = line.match(/^(\d{1,4})\s*[.．、]\s*(\S.*)$/);
+    const standaloneNumber = line.match(/^(\d{1,4})$/);
+    const number = start || (standaloneNumber && section ? [standaloneNumber[0], standaloneNumber[1], ''] : null);
     const following = [];
-    if (start) {
+    if (number) {
       for (let i = lineIndex + 1; i < lines.length; i++) {
         const next = lines[i].trim();
-        if (/^\d{1,4}\s*[.．、]\s*\S/.test(next)) break;
+        if (/^\d{1,4}(?:\s*[.．、]\s*\S.*)?$/.test(next)) break;
         following.push(next);
       }
     }
     const optionCount = following.filter(item => /^[A-E](?:\s*[.．、]\s*|\s+)\S/.test(item)).length;
-    if (start && (optionCount >= 2 || /内容缺失/.test(start[2]))) {
-      current = { number: Number(start[1]), section, lines: [start[2]] };
+    const hasQuestionStem = following.some(item => /^题干\s*[：:]/.test(item));
+    if (number && (optionCount >= 2 || /内容缺失/.test(number[2]) || section === '判断题' || (standaloneNumber && hasQuestionStem))) {
+      current = { number: Number(number[1]), section, lines: number[2] ? [number[2]] : [] };
       chunks.push(current);
     } else if (current && line) {
       current.lines.push(line);
@@ -377,14 +380,27 @@ function parsePaper(text, filename) {
     if (answerIndex < 0) { skipped.push(chunk.number); continue; }
     const answerText = chunk.lines[answerIndex].replace(/^(?:正确)?答案\s*[：:]\s*/, '').trim().toUpperCase();
     const answerMatch = answerText.match(/^[A-E](?:\s*[,，、/\s]?\s*[A-E])*/);
-    const answer = answerMatch ? [...new Set(answerMatch[0].match(/[A-E]/g))].sort() : [];
+    let answer = answerMatch ? [...new Set(answerMatch[0].match(/[A-E]/g))].sort() : [];
     const stem = [];
-    const options = [];
+    let options = [];
     for (const line of chunk.lines.slice(0, answerIndex)) {
       const option = line.match(/^([A-E])(?:\s*[.．、]\s*|\s+)(.*)$/);
       if (option) options.push({ letter: option[1], text: option[2] });
       else if (options.length) options[options.length - 1].text += ' ' + line;
-      else stem.push(line);
+      else stem.push(line.replace(/^题干\s*[：:]\s*/, ''));
+    }
+    if (chunk.section === '判断题' && !answer.length) {
+      const truthMatch = answerText.match(/^(对|错|正确|错误|是|否|√|×|✔|✘)/);
+      const truth = truthMatch ? truthMatch[1] : null;
+      if (truth) {
+        if (!options.length) options = [{ letter: 'A', text: '正确' }, { letter: 'B', text: '错误' }];
+        const answerIsTrue = /^(对|正确|是|√|✔)$/.test(truth);
+        const matchingOption = options.find(option => {
+          const text = option.text.replace(/[\s。．.!！?？]/g, '');
+          return answerIsTrue ? /^(对|正确|是|√|✔)$/.test(text) : /^(错|错误|否|×|✘)$/.test(text);
+        });
+        if (matchingOption) answer = [matchingOption.letter];
+      }
     }
     const letters = options.map(option => option.letter);
     if (!stem.length || chunk.lines.includes('[DOCX选项编号异常]') || options.length < 2 || letters.some((letter, index) => letter !== String.fromCharCode(65 + index)) || !answer.length || answer.some(letter => !letters.includes(letter)) || (chunk.section && chunk.section !== '多选题' && answer.length > 1)) {
@@ -450,11 +466,13 @@ async function extractDocx(data, base64 = false) {
   const paragraphs = [];
   for (const paragraph of body.getElementsByTagNameNS(ns, 'p')) {
     const text = Array.from(paragraph.getElementsByTagNameNS(ns, 't'), node => node.textContent).join('').trim();
-    const parts = text
+    const inlineOptionCount = (text.match(/\s[A-E]\s+(?=\S)/g) || []).length;
+    const normalized = text
       .replace(/([。！？])\s+(?=\d{1,4}\s*[.．、]\s*\S)/g, '$1\n')
       .replace(/([^\n])(?=[一二三四五六七八九十]+[、.．]\s*(?:判断题|单(?:项)?选(?:择)?题|多(?:项)?选(?:择)?题))/g, '$1\n')
       .replace(/([）)])\s+(?=\d{1,4}\s*[.．、]\s*\S)/g, '$1\n')
-      .split('\n');
+      .replace(/([。！？?])\s+([A-E])\s+(?=\S)/g, '$1\n$2. ');
+    const parts = (inlineOptionCount >= 2 ? normalized.replace(/([^\n])\s+([A-E])\s+(?=\S)/g, '$1\n$2. ') : normalized).split('\n');
     parts.forEach((part, index) => paragraphs.push({ text: part, paragraph: index === 0 ? paragraph : null }));
   }
   for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
@@ -474,9 +492,18 @@ async function extractDocx(data, base64 = false) {
     const idNode = numPr && numPr.getElementsByTagNameNS(ns, 'numId')[0];
     const format = idNode && formats.get(`${idNode.getAttributeNS(ns, 'val')}:${level}`);
     const explicit = text.match(/^(\d{1,4})\s*[.．、]\s*(\S.*)$/);
+    const standaloneNumber = text.match(/^(\d{1,4})$/);
     const option = text.match(/^([A-E])\s*[.．、]\s*/);
     const isAnswer = /^(?:正确)?答案\s*[：:]/.test(text);
     const isExplanation = /^解析\s*[：:]/.test(text);
+    if (standaloneNumber && /^题干\s*[：:]/.test(paragraphs[paragraphIndex + 1]?.text || '')) {
+      number = Number(standaloneNumber[1]);
+      lines.push(String(number));
+      hasQuestion = true;
+      hasAnswer = false;
+      nextOption = 0;
+      continue;
+    }
     let anotherQuestionFirst = false;
     if (format === 'decimal' && hasAnswer && !explicit) {
       for (let i = paragraphIndex + 1; i < paragraphs.length; i++) {
@@ -507,8 +534,13 @@ async function extractDocx(data, base64 = false) {
       text = `${String.fromCharCode(65 + nextOption)}. ${text}`;
       nextOption++;
     } else if (format === 'decimal' && hasQuestion && !hasAnswer && !option && !isAnswer && !isExplanation) {
-      lines.push('[DOCX选项编号异常]');
+      if (level > 0 && nextOption > 0) lines.push('[DOCX选项编号异常]');
+      if (nextOption < 5) {
+        text = `${String.fromCharCode(65 + nextOption)}. ${text}`;
+        nextOption++;
+      }
     }
+    if (hasQuestion && !hasAnswer) text = text.replace(/^([A-E])\s+(?=\S)/, '$1. ');
     text = text.replace(/\s*(正确答案|(?<!正确)答案)\s*([：:])/g, '\n$1$2');
     text = text.replace(/\s*解析\s*([：:])/g, '\n解析$1');
     text = text.replace(/([^\n])\s+([A-E]\s*[.．、]\s*)/g, '$1\n$2');
@@ -590,9 +622,29 @@ async function importFiles(files) {
     try {
       const text = /\.docx$/i.test(file.name) ? await extractDocx(await file.arrayBuffer()) : await extractPdf(file);
       const paper = parsePaper(text, file.name);
+      const existingIndex = state.papers.findIndex(existing => existing.id === paper.id);
       if (!paper.questions.length) {
         messages.push(`${file.name}：没有识别到完整题目。请确认文档含文字，且题目后有选项及“正确答案：”或“答案：”。`);
-      } else if (state.papers.some(existing => existing.id === paper.id)) {
+      } else if (existingIndex >= 0 && paper.questions.length > state.papers[existingIndex].questions.length) {
+        const existing = state.papers[existingIndex];
+        const progress = progressFor(existing.id);
+        if (!progress || (!progress.session && !progress.count && !(progress.attempts && progress.attempts.length))) {
+          state.papers[existingIndex] = paper;
+          imported++;
+          messages.push(`${file.name}：检测到此前版本未完整识别题目，已更新识别结果。`);
+        } else {
+          paper.id = `${paper.id}-complete-${paper.questions.length}`;
+          paper.name += '（完整识别版）';
+          paper.questions.forEach((question, index) => { question.id = `${paper.id}-${index}`; });
+          if (state.papers.some(existingPaper => existingPaper.id === paper.id)) {
+            messages.push(`${file.name}：完整识别版本已经导入，未重复添加。`);
+          } else {
+            state.papers.unshift(paper);
+            imported++;
+            messages.push(`${file.name}：已导入完整识别版本；原有试卷和答题记录已保留。`);
+          }
+        }
+      } else if (existingIndex >= 0) {
         messages.push(`${file.name}：已经导入，未重复添加。`);
       } else {
         state.papers.unshift(paper);
