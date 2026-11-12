@@ -847,7 +847,8 @@ document.addEventListener('click', async event => {
     const previous = session.index;
     session.index = action === 'prev' ? session.index - 1 : action === 'next' ? session.index + 1 : Number(button.dataset.index);
     if (session.paperId && !session.submitted && !await updateProgress('/api/progress/save', session.paperId, sessionSnapshot(session))) { session.index = previous; render(); return; }
-    save(); render(); window.scrollTo(0, 0);
+    save(); render();
+    if (!window.matchMedia('(max-width: 650px)').matches) window.scrollTo(0, 0);
   } else if (session && action === 'submit') {
     const unanswered = session.questions.filter(q => !(session.answers[q.id] || []).length).length;
     if (await confirmAction('确定交卷吗？', unanswered ? `还有 ${unanswered} 道题未作答，交卷后将按错误计入错题本。` : '交卷后将显示成绩、正确答案和解析，并自动收录错题。', '确认交卷')) {

@@ -7,3 +7,12 @@
 .wrong-answer-options .correct-answer-option{border-color:#b9d4bc;background:#f2f8f1;color:#315f49}
 .correct-answer-option span{font-size:11px;font-weight:600;margin-left:6px}
 @media(max-width:700px){.wrong-mode-actions{width:100%}.wrong-mode-actions .button{flex:1}}
+@media(max-width:650px){
+  .exam-layout{grid-template-columns:minmax(0,1fr)}
+  .exam-side{order:-1;padding:14px 16px}
+  .exam-side h3{margin-bottom:3px}
+  .exam-side p{margin:4px 0}
+  .palette{grid-template-columns:repeat(8,minmax(0,1fr));gap:5px;max-height:116px;overflow-y:auto;overscroll-behavior:contain;margin:9px 0}
+  .palette button{height:30px}
+  .exam-side .full{padding:9px}
+}
