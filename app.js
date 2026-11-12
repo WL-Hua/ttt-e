@@ -2,6 +2,7 @@
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
 const STORAGE_KEY = 'zhitu-exam-v1';
+const BUNDLED_VERSION = 4;
 const app = document.querySelector('#app');
 const input = document.querySelector('#pdf-input');
 const wrongInput = document.querySelector('#wrong-import');
@@ -597,26 +598,58 @@ function sameQuestion(left, right) {
       && comparableText(option.text) === comparableText(right.options[index].text));
 }
 
+function samePaperQuestions(left, right) {
+  return left.questions.length === right.questions.length && left.questions.every((question, index) => {
+    const candidate = right.questions[index];
+    return question.number === candidate.number && sameQuestion(question, candidate)
+      && comparableText(question.explanation || '') === comparableText(candidate.explanation || '');
+  });
+}
+
 async function completeFromReference(paper, base64) {
-  if (!base64 || !paper.skipped.length) return [];
+  if (!base64) return [];
   const binary = atob(base64);
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
   const reference = parsePaper(await extractPdfBytes(bytes), `${paper.name}.pdf`);
-  const byNumber = new Map(reference.questions.map(question => [question.number, question]));
-  if (paper.questions.length < 10 || paper.questions.some(question => {
-    const candidate = byNumber.get(question.number);
-    return !candidate || !sameQuestion(question, candidate);
-  })) throw new Error('同名 PDF 与 DOCX 的题目不完全一致，未使用 PDF 补全');
-  const filled = [];
-  for (const number of paper.skipped) {
-    const question = byNumber.get(number);
-    if (question) {
-      paper.questions.push({ ...question, id: `${paper.id}-reference-${number}`, source: '同名 PDF 补全' });
-      filled.push(number);
+  const documentQuestions = paper.questions;
+  const referenceQuestions = reference.questions;
+  const matches = Array.from({ length: documentQuestions.length + 1 },
+    () => new Uint16Array(referenceQuestions.length + 1));
+  for (let documentIndex = documentQuestions.length - 1; documentIndex >= 0; documentIndex--) {
+    for (let referenceIndex = referenceQuestions.length - 1; referenceIndex >= 0; referenceIndex--) {
+      matches[documentIndex][referenceIndex] = sameQuestion(documentQuestions[documentIndex], referenceQuestions[referenceIndex])
+        ? 1 + matches[documentIndex + 1][referenceIndex + 1]
+        : Math.max(matches[documentIndex + 1][referenceIndex], matches[documentIndex][referenceIndex + 1]);
     }
   }
-  paper.questions.sort((left, right) => left.number - right.number);
-  paper.skipped = paper.skipped.filter(number => !filled.includes(number));
+  const aligned = new Map();
+  let documentIndex = 0;
+  let referenceIndex = 0;
+  while (documentIndex < documentQuestions.length && referenceIndex < referenceQuestions.length) {
+    if (sameQuestion(documentQuestions[documentIndex], referenceQuestions[referenceIndex])) {
+      aligned.set(referenceIndex, documentQuestions[documentIndex++]);
+      referenceIndex++;
+    } else if (matches[documentIndex + 1][referenceIndex] >= matches[documentIndex][referenceIndex + 1]) {
+      documentIndex++;
+    } else {
+      referenceIndex++;
+    }
+  }
+  if (documentQuestions.length < 10 || aligned.size !== documentQuestions.length ||
+    aligned.size < Math.ceil(referenceQuestions.length * 0.9)) {
+    throw new Error('同名 PDF 与 DOCX 的题目内容或顺序不一致，未使用 PDF 补全');
+  }
+  const filled = [];
+  paper.questions = referenceQuestions.map((question, index) => {
+    const documentQuestion = aligned.get(index);
+    if (documentQuestion) {
+      documentQuestion.number = question.number;
+      return documentQuestion;
+    }
+    filled.push(question.number);
+    return { ...question, id: `${paper.id}-reference-${question.number}`, source: '同名 PDF 补全' };
+  });
+  paper.skipped = [];
   paper.filledFromPdf = filled;
   return filled;
 }
@@ -671,7 +704,7 @@ async function importFiles(files) {
 }
 
 async function installBundledPapers() {
-  if (state.bundledVersion === 1) return;
+  if (state.bundledVersion >= BUNDLED_VERSION) return;
   if (!Array.isArray(window.BUNDLED_DOCX)) {
     notice = '内置试卷数据未加载，请检查 bundled-papers.js 是否存在。';
     render();
@@ -683,9 +716,10 @@ async function installBundledPapers() {
     try {
       const paper = parsePaper(await extractDocx(file.data, true), file.name);
       if (!paper.questions.length) throw new Error('未识别到完整题目');
-      const existing = state.papers.find(item => item.id === paper.id);
-      if (state.bundledInstalled && !existing) continue;
-      if (paper.skipped.length && file.referencePdf) {
+      const existing = state.papers.find(item => item.id === paper.id)
+        || state.papers.find(item => item.name === paper.name);
+      if (state.bundledInstalled && !existing && state.bundledVersion >= BUNDLED_VERSION) continue;
+      if (file.referencePdf) {
         try {
           await completeFromReference(paper, file.referencePdf);
         } catch (error) {
@@ -694,9 +728,32 @@ async function installBundledPapers() {
       }
       if (existing) {
         const index = state.papers.indexOf(existing);
-        state.papers[index] = paper;
+        const progress = progressFor(existing.id);
+        const hasHistory = progress && (progress.session || progress.count ||
+          (progress.attempts && progress.attempts.length));
+        if (samePaperQuestions(existing, paper)) {
+          continue;
+        } else if (hasHistory && paper.questions.length >= existing.questions.length) {
+          paper.id = `${paper.id}-complete-${paper.questions.length}`;
+          paper.name += '（完整识别版）';
+          paper.questions.forEach((question, questionIndex) => { question.id = `${paper.id}-${questionIndex}`; });
+          const completeIndex = state.papers.findIndex(item => item.id === paper.id);
+          if (completeIndex >= 0) state.papers[completeIndex] = paper;
+          else state.papers.unshift(paper);
+          messages.push(`${file.name}：已新增 ${paper.questions.length} 题的完整识别版，原有答题记录已保留。`);
+        } else if (hasHistory) {
+          messages.push(`${file.name}：新识别版本题数较少，已保留原试卷和答题记录。`);
+        } else {
+          state.papers[index] = paper;
+          if (paper.filledFromPdf && paper.filledFromPdf.length) {
+            messages.push(`${file.name}：已与同名 PDF 对照，补全第 ${paper.filledFromPdf.join('、')} 题。`);
+          }
+        }
       } else {
         state.papers.push(paper);
+        if (paper.filledFromPdf && paper.filledFromPdf.length) {
+          messages.push(`${file.name}：已与同名 PDF 对照，补全第 ${paper.filledFromPdf.join('、')} 题。`);
+        }
       }
       if (paper.skipped.length) messages.push(`${file.name}：未识别第 ${paper.skipped.join('、')} 题。`);
     } catch (error) {
@@ -704,8 +761,27 @@ async function installBundledPapers() {
       messages.push(`${file.name}：导入失败（${error.message}）。`);
     }
   }
+  const consolidatedPapers = [];
+  for (const paper of state.papers) {
+    const duplicateIndex = consolidatedPapers.findIndex(item =>
+      item.name === paper.name && samePaperQuestions(item, paper));
+    if (duplicateIndex < 0) {
+      consolidatedPapers.push(paper);
+      continue;
+    }
+    const duplicate = consolidatedPapers[duplicateIndex];
+    const paperProgress = progressFor(paper.id);
+    const duplicateProgress = progressFor(duplicate.id);
+    const paperHasHistory = paperProgress && (paperProgress.session || paperProgress.count ||
+      (paperProgress.attempts && paperProgress.attempts.length));
+    const duplicateHasHistory = duplicateProgress && (duplicateProgress.session || duplicateProgress.count ||
+      (duplicateProgress.attempts && duplicateProgress.attempts.length));
+    if (paperHasHistory && !duplicateHasHistory) consolidatedPapers[duplicateIndex] = paper;
+    else if (paperHasHistory && duplicateHasHistory) consolidatedPapers.push(paper);
+  }
+  state.papers = consolidatedPapers;
   state.bundledInstalled = !failed;
-  state.bundledVersion = failed ? 0 : 1;
+  state.bundledVersion = failed ? 0 : BUNDLED_VERSION;
   if (!save()) state.bundledVersion = 0;
   if (messages.length) notice = `内置试卷识别提示（未识别的题目不计入试卷，请核对原文件）：\n${messages.join('\n')}`;
   render();
