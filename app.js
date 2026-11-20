@@ -13,6 +13,9 @@ let state = { papers: [], wrong: [], session: null, progress: [] };
 let view = 'home';
 let attemptReview = null;
 let wrongAnswerMode = false;
+let questionSearchInput = '';
+let questionSearchQuery = '';
+let questionSearchPage = 0;
 let interviewSections = [];
 let interviewCategory = 'scenic';
 let interviewIndex = 0;
@@ -21,6 +24,8 @@ let interviewRevealed = false;
 let interviewReady = false;
 let interviewError = '';
 const interviewDrafts = new Map();
+let interviewRecording = null;
+let interviewAudioUrl = '';
 let notice = '';
 let toastTimer;
 let wrongReady = !sharedMode;
@@ -975,6 +980,118 @@ async function installBundledInterview() {
   if (view === 'interview') render();
 }
 
+function interviewRecordingKey() {
+  const section = interviewSections.find(item => item.id === interviewCategory);
+  const item = section && section.items[interviewIndex];
+  return item ? `${section.id}:${item.number}` : '';
+}
+
+function interviewRecordingStore(mode, operation) {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error('浏览器不支持录音存储'));
+      return;
+    }
+    let blocked = false;
+    const request = indexedDB.open('zhitu-interview-recordings', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('recordings');
+    request.onerror = () => reject(request.error || new Error('无法打开录音存储'));
+    request.onblocked = () => {
+      blocked = true;
+      reject(new Error('录音存储被其他页面阻塞，请关闭其他页面后重试'));
+    };
+    request.onsuccess = () => {
+      const database = request.result;
+      if (blocked) { database.close(); return; }
+      try {
+        const transaction = database.transaction('recordings', mode);
+        const result = operation(transaction.objectStore('recordings'));
+        transaction.oncomplete = () => { database.close(); resolve(result.result); };
+        transaction.onabort = () => { database.close(); reject(transaction.error || new Error('录音存储操作失败')); };
+      } catch (error) {
+        database.close();
+        reject(error);
+      }
+    };
+  });
+}
+
+async function loadInterviewRecording(key, player) {
+  try {
+    const recording = await interviewRecordingStore('readonly', store => store.get(key));
+    if (!player.isConnected || player.dataset.recordingKey !== key) return;
+    if (recording instanceof Blob && recording.size) {
+      interviewAudioUrl = URL.createObjectURL(recording);
+      player.src = interviewAudioUrl;
+      player.hidden = false;
+      player.previousElementSibling.textContent = '本题已有录音，可点击播放。';
+    } else {
+      player.previousElementSibling.textContent = '本题暂无录音。';
+    }
+  } catch (error) {
+    if (player.isConnected) player.previousElementSibling.textContent = `读取录音失败：${error.message}`;
+    notify(`读取录音失败：${error.message}`, true);
+  }
+}
+
+async function startInterviewRecording() {
+  const key = interviewRecordingKey();
+  if (!key || interviewRecording) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+    notify('当前浏览器不支持录音，请使用支持麦克风的浏览器，并通过 HTTPS 或本机地址打开。', true);
+    return;
+  }
+  const audio = document.createElement('audio');
+  const mimeType = ['audio/webm;codecs=opus', 'audio/mp4;codecs=mp4a.40.2', 'audio/ogg;codecs=opus']
+    .find(type => MediaRecorder.isTypeSupported(type) && audio.canPlayType(type));
+  if (!mimeType) {
+    notify('当前浏览器没有同时支持录制和回放的音频格式，请换用最新版 Chrome、Edge 或 Safari。', true);
+    return;
+  }
+  interviewRecording = { key, status: 'starting' };
+  render();
+  let stream;
+  try {
+    const previous = await interviewRecordingStore('readonly', store => store.get(key));
+    if (previous && !await confirmAction('替换本题录音？', '新录音保存成功后会替换本题已有录音。', '开始新录音')) {
+      interviewRecording = null;
+      render();
+      return;
+    }
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+    let recordingError = '';
+    recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+    recorder.onerror = event => { recordingError = (event.error && event.error.message) || '录音设备发生错误'; };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach(track => track.stop());
+      interviewRecording.status = 'saving';
+      render();
+      try {
+        if (recordingError) throw new Error(recordingError);
+        const blob = new Blob(chunks, { type: recorder.mimeType || (chunks[0] && chunks[0].type) || mimeType });
+        if (!blob.size) throw new Error('未录到音频，请检查麦克风');
+        await interviewRecordingStore('readwrite', store => store.put(blob, key));
+        notify('录音已保存在当前浏览器。');
+      } catch (error) {
+        notify(`录音保存失败：${error.message}。原有录音未被替换。`, true);
+      } finally {
+        interviewRecording = null;
+        render();
+      }
+    };
+    recorder.start();
+    interviewRecording = { key, status: 'recording', recorder };
+    render();
+  } catch (error) {
+    if (stream) stream.getTracks().forEach(track => track.stop());
+    interviewRecording = null;
+    render();
+    notify(`无法开始录音：${error.message}。请检查麦克风权限和浏览器设置。`, true);
+  }
+}
+
 function heading(kicker, title, description, right = '') {
   return `<div class="page-heading"><div><div class="eyebrow">${kicker}</div><h1>${title}</h1><p>${description}</p></div>${right}</div>`;
 }
@@ -994,17 +1111,18 @@ function interviewView() {
   const section = interviewSections.find(item => item.id === interviewCategory) || interviewSections[0];
   const item = section.items[Math.min(interviewIndex, section.items.length - 1)];
   const revealed = interviewMode === 'answers' || interviewRevealed;
-  const questionText = item.kind === 'en-zh' ? item.documentEnglishQuestion : item.chineseQuestion;
+  const questionText = item.kind === 'zh-en' ? item.chineseQuestion
+    : item.kind === 'en-zh' ? item.documentEnglishQuestion : item.translatedQuestion;
   const draftKey = `${section.id}:${item.number}`;
   const modeButtons = `<div class="interview-mode-actions"><button class="button ${interviewMode === 'study' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="study" aria-pressed="${interviewMode === 'study'}">学习模式</button><button class="button ${interviewMode === 'answers' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="answers" aria-pressed="${interviewMode === 'answers'}">显示答案模式</button></div>`;
-  return `${heading('INTERVIEW', 'Interview', '以中文题目为基础，练习作答并对照双语答案。', modeButtons)}
+  return `${heading('INTERVIEW', 'Interview', '练习作答、录音并对照双语答案。', modeButtons)}
     <div class="interview-toolbar"><label for="interview-category">题目分类</label><select id="interview-category">${interviewSections.map(value => `<option value="${value.id}" ${value.id === section.id ? 'selected' : ''}>${escapeHtml(value.title)}（${value.items.length}）</option>`).join('')}</select><span>${interviewIndex + 1} / ${section.items.length}</span></div>
     <div class="interview-layout"><section class="panel interview-main">
       <div class="interview-question-head"><span class="tag">${escapeHtml(section.title)}${item.topic ? ` · ${escapeHtml(item.topic)}` : ''}</span><strong>第 ${item.number} 题</strong></div>
-      <h2 class="interview-question">${escapeHtml(questionText || '文档未提供中文题目')}</h2>
-      ${item.kind === 'qa' && item.translatedQuestion ? `<div class="interview-translation"><strong>我的英文题目译文</strong><p>${escapeHtml(item.translatedQuestion)}</p></div>` : ''}
-      ${item.kind === 'qa' && item.documentEnglishQuestion ? `<details class="interview-document"><summary>查看文档英文题目</summary><p>${escapeHtml(item.documentEnglishQuestion)}</p></details>` : ''}
+      <h2 class="interview-question">${escapeHtml(questionText || '文档未提供题目')}</h2>
+      ${item.kind === 'qa' ? `<details class="interview-document"><summary>查看中文题目</summary><p>${escapeHtml(item.chineseQuestion || '文档未提供中文题目')}</p></details>${item.documentEnglishQuestion ? `<details class="interview-document"><summary>查看文档英文题目</summary><p>${escapeHtml(item.documentEnglishQuestion)}</p></details>` : ''}` : ''}
       ${interviewMode === 'study' ? `<label class="interview-draft-label" for="interview-draft">先试着作答</label><textarea id="interview-draft" placeholder="可在这里整理你的口头答案…" data-draft-key="${escapeHtml(draftKey)}">${escapeHtml(interviewDrafts.get(draftKey) || '')}</textarea>` : ''}
+      <section class="interview-recorder" aria-label="录音与回放"><strong>录音与回放</strong><p>录音只保存在当前浏览器，不会跨浏览器共享。</p><div class="interview-recorder-actions">${interviewRecording && interviewRecording.status === 'recording' ? '<button class="button primary" data-action="interview-record-stop">停止并保存录音</button><span role="status">正在录音…</span>' : `<button class="button secondary" data-action="interview-record-start" ${interviewRecording ? 'disabled' : ''}>开始录音</button>${interviewRecording ? '<span role="status">正在准备或保存录音…</span>' : ''}`}</div><p class="interview-recording-status" role="status">正在读取本题录音…</p><audio controls hidden data-recording-key="${escapeHtml(draftKey)}"></audio></section>
       ${revealed ? interviewAnswer(item) : '<div class="interview-hidden-answer">先独立思考，再显示参考答案。</div>'}
       <div class="interview-actions"><button class="button secondary" data-action="interview-prev" ${interviewIndex === 0 ? 'disabled' : ''}>← 上一题</button>${interviewMode === 'study' && !interviewRevealed ? '<button class="button primary" data-action="interview-reveal">显示参考答案</button>' : ''}<button class="button secondary" data-action="interview-next" ${interviewIndex === section.items.length - 1 ? 'disabled' : ''}>下一题 →</button></div>
     </section><aside class="panel interview-side"><h3>题目选择</h3><div class="interview-palette">${section.items.map((entry, index) => `<button data-action="interview-jump" data-index="${index}" class="${index === interviewIndex ? 'current' : ''}" aria-label="第 ${entry.number} 题">${entry.number}</button>`).join('')}</div></aside></div>`;
@@ -1030,11 +1148,42 @@ function home() {
     <div class="cards">${state.papers.slice(0, 2).map(paperCard).join('')}<button class="upload-card" data-action="import"><span class="upload-plus">＋</span><strong>导入新试卷</strong><small>支持 DOCX 和含文字的 PDF</small></button></div>`;
 }
 
+function answerOptions(question) {
+  return `<div class="wrong-answer-options">${question.options.map(option => `<div class="${question.answer.includes(option.letter) ? 'correct-answer-option' : ''}"><strong>${escapeHtml(option.letter)}.</strong> ${escapeHtml(option.text)}${question.answer.includes(option.letter) ? ' <span>正确答案</span>' : ''}</div>`).join('')}</div><div class="answer-box"><strong>正确答案：${question.answer.map(escapeHtml).join('、')}</strong>${question.explanation ? `<br><br>解析：${escapeHtml(question.explanation)}` : ''}</div>`;
+}
+
+function questionSearchView() {
+  const normalize = value => value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  const query = normalize(questionSearchQuery);
+  const results = [];
+  if (query) {
+    for (const paper of state.papers) {
+      for (const question of paper.questions) {
+        if ([question.stem, ...question.options.map(option => option.text)].some(text => normalize(text).includes(query))) {
+          results.push({ paper, question });
+        }
+      }
+    }
+  }
+  const pageSize = 20;
+  const pages = Math.ceil(results.length / pageSize);
+  questionSearchPage = Math.max(0, Math.min(questionSearchPage, pages - 1));
+  const visible = results.slice(questionSearchPage * pageSize, (questionSearchPage + 1) * pageSize);
+  return `<section class="panel question-search">
+    <h2>搜索笔试题目</h2><p>搜索当前浏览器中所有试卷的题干或选项，展开结果查看答案和解析，不影响答题记录。</p>
+    <form id="question-search-form" class="question-search-form"><label for="question-search-input">关键词</label><input id="question-search-input" type="search" placeholder="输入题目或选项中的关键词" value="${escapeHtml(questionSearchInput)}"><button class="button primary" type="submit">搜索</button>${questionSearchQuery ? '<button class="button secondary" type="button" data-action="clear-question-search">清除</button>' : ''}</form>
+    ${questionSearchQuery ? `<div class="question-search-summary" role="status">“${escapeHtml(questionSearchQuery)}”找到 ${results.length} 道题${pages > 1 ? ` · 第 ${questionSearchPage + 1} / ${pages} 页` : ''}</div>
+      <div class="question-search-results">${visible.map(({ paper, question }) => `<details class="question-search-result"><summary><span class="tag">${escapeHtml(paper.name)} · ${escapeHtml(question.type)} · 第 ${escapeHtml(question.number)} 题</span><strong>${escapeHtml(question.stem)}</strong></summary>${answerOptions(question)}</details>`).join('') || '<p>没有找到匹配题目，请尝试其他关键词。</p>'}</div>
+      ${pages > 1 ? `<div class="question-search-pages"><button class="button secondary" data-action="question-search-prev" ${questionSearchPage === 0 ? 'disabled' : ''}>上一页</button><button class="button secondary" data-action="question-search-next" ${questionSearchPage >= pages - 1 ? 'disabled' : ''}>下一页</button></div>` : ''}` : ''}
+  </section>`;
+}
+
 function papersView() {
   return `${heading('YOUR PAPERS', '我的试卷', '所有准备，都从这里开始。', '<button class="button primary" data-action="import">＋ 导入试卷</button>')}
     <div class="notice">${sharedMode ? (progressReady ? '试卷进度和交卷次数已连接本机共享存储。' : '试卷进度未连接本机共享存储，请确认服务窗口运行中。') : '当前为浏览器本地模式，试卷进度不会自动跨浏览器共享。'} 试卷文件仍需在各浏览器分别导入。</div>
     <div><button class="button secondary" data-action="export-progress">导出试卷进度</button> <button class="button secondary" data-action="import-progress">导入试卷进度</button>${state.pendingLegacy ? ' <button class="button secondary" data-action="export-legacy-progress">导出未迁移的旧进度</button>' : ''}</div>
     ${notice ? `<div class="notice" role="alert">${escapeHtml(notice)}</div>` : ''}
+    ${questionSearchView()}
     <div class="section-title"><div><h2>试卷列表 <span class="tag">${state.papers.length}</span></h2><p>完成整套试卷后，即可查看成绩与解析</p></div></div>
     <div class="cards">${state.papers.map(paperCard).join('')}<button class="upload-card" data-action="import"><span class="upload-plus">＋</span><strong>导入新试卷</strong><small>支持一次选择多个 DOCX 或 PDF</small></button></div>`;
 }
@@ -1044,7 +1193,7 @@ function wrongView() {
     ${syncWarning ? `<div class="notice" role="alert">${escapeHtml(syncWarning)}</div>` : `<div class="notice">错题本已连接本机共享存储，不同浏览器使用同一地址即可查看。</div>`}
     <div><button class="button secondary" data-action="export-wrong">导出错题本</button> <button class="button secondary" data-action="import-wrong">导入错题本</button></div>
     <div class="section-title"><div><h2>待巩固的题目 <span class="tag">${state.wrong.length}</span></h2><p>错题会保留在这里，可反复练习或手动移除</p></div></div>
-    <div class="wrong-list">${state.wrong.length ? state.wrong.map(item => `<article class="panel wrong-item"><span class="tag">${escapeHtml(item.question.type)} · 第 ${item.question.number} 题</span><h3>${escapeHtml(item.question.stem)}</h3>${wrongAnswerMode ? `<div class="wrong-answer-options">${item.question.options.map(option => `<div class="${item.question.answer.includes(option.letter) ? 'correct-answer-option' : ''}"><strong>${escapeHtml(option.letter)}.</strong> ${escapeHtml(option.text)}${item.question.answer.includes(option.letter) ? ' <span>正确答案</span>' : ''}</div>`).join('')}</div><div class="answer-box"><strong>正确答案：${item.question.answer.map(escapeHtml).join('、')}</strong>${item.question.explanation ? `<br><br>解析：${escapeHtml(item.question.explanation)}` : ''}</div>` : ''}<div class="wrong-item-bottom"><span>${escapeHtml(item.paperName)}</span><button class="delete-action" data-action="remove-wrong" data-id="${escapeHtml(item.question.id)}">移除错题</button></div></article>`).join('') : '<div class="empty-card"><div class="empty-symbol">✳</div>还没有错题，继续保持！<br>完成试卷后，答错、漏选和未作答的题目会自动收录在这里。</div>'}</div>`;
+    <div class="wrong-list">${state.wrong.length ? state.wrong.map(item => `<article class="panel wrong-item"><span class="tag">${escapeHtml(item.question.type)} · 第 ${item.question.number} 题</span><h3>${escapeHtml(item.question.stem)}</h3>${wrongAnswerMode ? answerOptions(item.question) : ''}<div class="wrong-item-bottom"><span>${escapeHtml(item.paperName)}</span><button class="delete-action" data-action="remove-wrong" data-id="${escapeHtml(item.question.id)}">移除错题</button></div></article>`).join('') : '<div class="empty-card"><div class="empty-symbol">✳</div>还没有错题，继续保持！<br>完成试卷后，答错、漏选和未作答的题目会自动收录在这里。</div>'}</div>`;
 }
 
 function isCorrect(question, selected) {
@@ -1090,12 +1239,18 @@ function examView() {
 }
 
 function render() {
+  if (interviewAudioUrl) {
+    URL.revokeObjectURL(interviewAudioUrl);
+    interviewAudioUrl = '';
+  }
   document.querySelector('#paper-count').textContent = state.papers.length;
   document.querySelector('#wrong-count').textContent = state.wrong.length;
   document.querySelectorAll('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.view === view));
   document.querySelector('#top-location').textContent = ({ home: '学习首页', papers: '我的试卷', interview: 'Interview', wrong: '错题本', exam: '专注练习' })[view];
   document.querySelector('#storage-description').textContent = sharedMode ? '错题和试卷进度保存在本机' : '错题和进度保存在当前浏览器中';
   app.innerHTML = view === 'home' ? home() : view === 'papers' ? papersView() : view === 'interview' ? interviewView() : view === 'wrong' ? wrongView() : examView();
+  const player = app.querySelector('audio[data-recording-key]');
+  if (player) loadInterviewRecording(player.dataset.recordingKey, player);
 }
 
 function confirmAction(title, message, buttonText) {
@@ -1130,6 +1285,10 @@ document.addEventListener('click', async event => {
   if (!button) return;
   if (button.dataset.view) {
     event.preventDefault();
+    if (interviewRecording && button.dataset.view !== 'interview') {
+      notify('请先停止录音并等待保存完成，再离开 Interview。');
+      return;
+    }
     attemptReview = null;
     view = button.dataset.view;
     render();
@@ -1146,9 +1305,29 @@ document.addEventListener('click', async event => {
   else if (action === 'export-wrong') exportWrong();
   else if (action === 'import-wrong') wrongInput.click();
   else if (action === 'wrong-answer-mode') { wrongAnswerMode = !wrongAnswerMode; render(); }
+  else if (action === 'clear-question-search') { questionSearchInput = ''; questionSearchQuery = ''; questionSearchPage = 0; render(); }
+  else if (action === 'question-search-prev' || action === 'question-search-next') {
+    questionSearchPage += action === 'question-search-next' ? 1 : -1;
+    render();
+    document.querySelector('#question-search-form').scrollIntoView({ block: 'start' });
+  }
+  else if (action === 'interview-record-start') { await startInterviewRecording(); }
+  else if (action === 'interview-record-stop' && interviewRecording && interviewRecording.status === 'recording') {
+    try {
+      interviewRecording.status = 'saving';
+      interviewRecording.recorder.stop();
+      render();
+    } catch (error) {
+      interviewRecording.recorder.stream.getTracks().forEach(track => track.stop());
+      interviewRecording = null;
+      render();
+      notify(`停止录音失败：${error.message}。原有录音未被替换。`, true);
+    }
+  }
   else if (action === 'interview-mode') { interviewMode = button.dataset.mode; interviewRevealed = false; render(); }
   else if (action === 'interview-reveal') { interviewRevealed = true; render(); }
   else if (action === 'interview-prev' || action === 'interview-next' || action === 'interview-jump') {
+    if (interviewRecording) { notify('请先停止录音并等待保存完成，再切换题目。'); return; }
     const section = interviewSections.find(item => item.id === interviewCategory);
     if (section) {
       interviewIndex = action === 'interview-prev' ? Math.max(0, interviewIndex - 1)
@@ -1248,6 +1427,11 @@ document.addEventListener('click', async event => {
 
 document.addEventListener('change', async event => {
   if (event.target.id === 'interview-category') {
+    if (interviewRecording) {
+      event.target.value = interviewCategory;
+      notify('请先停止录音并等待保存完成，再切换分类。');
+      return;
+    }
     interviewCategory = event.target.value;
     interviewIndex = 0;
     interviewRevealed = false;
@@ -1280,6 +1464,32 @@ document.addEventListener('change', async event => {
 document.addEventListener('input', event => {
   if (event.target.id === 'interview-draft') {
     interviewDrafts.set(event.target.dataset.draftKey, event.target.value);
+  } else if (event.target.id === 'question-search-input') {
+    questionSearchInput = event.target.value;
+  }
+});
+
+app.addEventListener('submit', event => {
+  if (event.target.id !== 'question-search-form') return;
+  event.preventDefault();
+  questionSearchInput = event.target.querySelector('#question-search-input').value;
+  questionSearchQuery = questionSearchInput.trim();
+  questionSearchPage = 0;
+  render();
+  if (!questionSearchQuery) notify('请输入题目或选项关键词。');
+});
+
+app.addEventListener('error', event => {
+  if (event.target.matches('audio[data-recording-key]')) {
+    event.target.previousElementSibling.textContent = '录音无法播放，请检查浏览器是否支持该音频格式。';
+    notify('录音无法播放，请检查浏览器是否支持该音频格式。', true);
+  }
+}, true);
+
+window.addEventListener('beforeunload', event => {
+  if (interviewRecording) {
+    event.preventDefault();
+    event.returnValue = '';
   }
 });
 
