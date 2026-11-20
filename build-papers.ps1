@@ -1,7 +1,13 @@
 $ErrorActionPreference = 'Stop'
 $directory = Join-Path $PSScriptRoot 'test'
 $files = @(Get-ChildItem -LiteralPath $directory -Filter '*.docx' -File | Where-Object { $_.Name -ine 'interview.docx' } | Sort-Object Name)
-if ($files.Count -eq 0) { throw "No DOCX files found in $directory." }
+$pdfFiles = @(Get-ChildItem -LiteralPath $directory -Filter '*.pdf' -File | Where-Object {
+    $stem = Join-Path $_.DirectoryName ([IO.Path]::GetFileNameWithoutExtension($_.Name))
+    -not (Test-Path -LiteralPath "$stem.docx" -PathType Leaf) -and
+        -not ($stem.EndsWith('.docx', [StringComparison]::OrdinalIgnoreCase) -and
+            (Test-Path -LiteralPath $stem -PathType Leaf))
+} | Sort-Object Name)
+if ($files.Count -eq 0 -and $pdfFiles.Count -eq 0) { throw "No DOCX or PDF files found in $directory." }
 $papers = @($files | ForEach-Object {
     $item = [ordered]@{
         name = $_.Name
@@ -13,10 +19,16 @@ $papers = @($files | ForEach-Object {
     }
     $item
 })
+$papers += @($pdfFiles | ForEach-Object {
+    [ordered]@{
+        name = $_.Name
+        data = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
+    }
+})
 $json = ConvertTo-Json -InputObject $papers -Compress -Depth 3
 $output = "window.BUNDLED_DOCX = $json;`n"
 [IO.File]::WriteAllText((Join-Path $PSScriptRoot 'bundled-papers.js'), $output, (New-Object System.Text.UTF8Encoding($false)))
-Write-Output "Bundled $($files.Count) DOCX files."
+Write-Output "Bundled $($files.Count) DOCX files and $($pdfFiles.Count) standalone PDF files."
 
 $interviewFile = Join-Path $directory 'interview.docx'
 if (Test-Path -LiteralPath $interviewFile -PathType Leaf) {

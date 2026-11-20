@@ -2,7 +2,7 @@
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js';
 const STORAGE_KEY = 'zhitu-exam-v1';
-const BUNDLED_VERSION = 4;
+const BUNDLED_VERSION = 5;
 const app = document.querySelector('#app');
 const input = document.querySelector('#pdf-input');
 const wrongInput = document.querySelector('#wrong-import');
@@ -362,19 +362,19 @@ function parsePaper(text, filename) {
       continue;
     }
     const start = line.match(/^(\d{1,4})\s*[.．、]\s*(\S.*)$/);
-    const standaloneNumber = line.match(/^(\d{1,4})$/);
+    const standaloneNumber = line.match(/^(\d{1,4})\s*[.．、]?$/);
     const number = start || (standaloneNumber && section ? [standaloneNumber[0], standaloneNumber[1], ''] : null);
     const following = [];
     if (number) {
       for (let i = lineIndex + 1; i < lines.length; i++) {
         const next = lines[i].trim();
-        if (/^\d{1,4}(?:\s*[.．、]\s*\S.*)?$/.test(next)) break;
+        if (/^\d{1,4}(?:\s*[.．、](?:\s*\S.*)?)?$/.test(next)) break;
         following.push(next);
       }
     }
     const optionCount = following.filter(item => /^[A-E](?:\s*[.．、]\s*|\s+)\S/.test(item)).length;
     const hasQuestionStem = following.some(item => /^题干\s*[：:]/.test(item));
-    if (number && (optionCount >= 2 || /内容缺失/.test(number[2]) || section === '判断题' || (standaloneNumber && hasQuestionStem))) {
+    if (number && (optionCount >= 2 || /(?:内容|题目).*缺失/.test(number[2]) || section === '判断题' || (standaloneNumber && hasQuestionStem))) {
       current = { number: Number(number[1]), section, lines: number[2] ? [number[2]] : [] };
       chunks.push(current);
     } else if (current && line) {
@@ -412,7 +412,7 @@ function parsePaper(text, filename) {
       }
     }
     const letters = options.map(option => option.letter);
-    if (!stem.length || chunk.lines.includes('[DOCX选项编号异常]') || options.length < 2 || letters.some((letter, index) => letter !== String.fromCharCode(65 + index)) || !answer.length || answer.some(letter => !letters.includes(letter)) || (chunk.section && chunk.section !== '多选题' && answer.length > 1)) {
+    if (!stem.length || chunk.lines.includes('[DOCX选项编号异常]') || options.some(option => /[（(]\s*选项\s*缺失\s*[）)]/.test(option.text)) || options.length < 2 || letters.some((letter, index) => letter !== String.fromCharCode(65 + index)) || !answer.length || answer.some(letter => !letters.includes(letter)) || (chunk.section && chunk.section !== '多选题' && answer.length > 1)) {
       skipped.push(chunk.number);
       continue;
     }
@@ -714,7 +714,9 @@ async function installBundledPapers() {
   let failed = false;
   for (const file of window.BUNDLED_DOCX) {
     try {
-      const paper = parsePaper(await extractDocx(file.data, true), file.name);
+      const isPdf = /\.pdf$/i.test(file.name);
+      const bytes = isPdf ? Uint8Array.from(atob(file.data), char => char.charCodeAt(0)) : null;
+      const paper = parsePaper(isPdf ? await extractPdfBytes(bytes) : await extractDocx(file.data, true), file.name);
       if (!paper.questions.length) throw new Error('未识别到完整题目');
       const existing = state.papers.find(item => item.id === paper.id)
         || state.papers.find(item => item.name === paper.name);
