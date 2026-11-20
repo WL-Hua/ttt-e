@@ -19,6 +19,8 @@
 .question-search-result summary strong{display:block;margin-top:6px;overflow-wrap:anywhere}
 .question-search-result .tag{white-space:normal;overflow-wrap:anywhere}
 .question-search-pages{display:flex;gap:8px;margin-top:14px}
+.interview-search{margin:0 0 18px}
+.interview-search-jump{margin-top:14px}
 @media(max-width:700px){.wrong-mode-actions{width:100%}.wrong-mode-actions .button{flex:1}}
 @media(max-width:650px){
   .exam-layout{grid-template-columns:minmax(0,1fr)}

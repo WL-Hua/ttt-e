@@ -23,6 +23,9 @@ let interviewMode = 'study';
 let interviewRevealed = false;
 let interviewReady = false;
 let interviewError = '';
+let interviewSearchInput = '';
+let interviewSearchQuery = '';
+let interviewSearchPage = 0;
 const interviewDrafts = new Map();
 let interviewRecording = null;
 let interviewAudioUrl = '';
@@ -1106,20 +1109,55 @@ function interviewAnswer(item) {
   return `<div class="interview-answer"><section><strong>我的英文译文（以中文为准）</strong><p>${escapeHtml(item.translatedAnswer)}</p></section><section><strong>文档英文版</strong><p>${escapeHtml(item.documentEnglishAnswer || '文档未提供')}</p></section><section><strong>中文版</strong><p>${escapeHtml(item.chineseAnswer || '文档未提供')}</p></section></div>`;
 }
 
+function interviewQuestionText(item) {
+  return (item.kind === 'zh-en' ? item.chineseQuestion
+    : item.kind === 'en-zh' ? item.documentEnglishQuestion : item.translatedQuestion) || '文档未提供题目';
+}
+
+function normalizeSearchText(value) {
+  return value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+}
+
+function interviewSearchView() {
+  const query = normalizeSearchText(interviewSearchQuery);
+  const results = [];
+  if (query) {
+    for (const section of interviewSections) {
+      section.items.forEach((item, index) => {
+        if ([item.chineseQuestion, item.translatedQuestion, item.documentEnglishQuestion]
+          .some(text => text && normalizeSearchText(text).includes(query))) {
+          results.push({ section, item, index });
+        }
+      });
+    }
+  }
+  const pageSize = 20;
+  const pages = Math.ceil(results.length / pageSize);
+  interviewSearchPage = Math.max(0, Math.min(interviewSearchPage, pages - 1));
+  const visible = results.slice(interviewSearchPage * pageSize, (interviewSearchPage + 1) * pageSize);
+  return `<section class="panel question-search interview-search">
+    <h2>搜索 Interview 题目</h2><p>搜索所有分类的中英文题目，展开结果可查看答案或跳转练习。</p>
+    <form id="interview-search-form" class="question-search-form"><label for="interview-search-input">关键词</label><input id="interview-search-input" type="search" placeholder="输入中文或英文题目关键词" value="${escapeHtml(interviewSearchInput)}"><button class="button primary" type="submit">搜索</button>${interviewSearchQuery ? '<button class="button secondary" type="button" data-action="clear-interview-search">清除</button>' : ''}</form>
+    ${interviewSearchQuery ? `<div class="question-search-summary" role="status">“${escapeHtml(interviewSearchQuery)}”找到 ${results.length} 道题${pages > 1 ? ` · 第 ${interviewSearchPage + 1} / ${pages} 页` : ''}</div>
+      <div class="question-search-results">${visible.map(({ section, item, index }) => `<details class="question-search-result"><summary><span class="tag">${escapeHtml(section.title)} · 第 ${escapeHtml(item.number)} 题</span><strong>${escapeHtml(interviewQuestionText(item))}</strong></summary>${item.kind === 'qa' ? `<p>中文题目：${escapeHtml(item.chineseQuestion || '文档未提供中文题目')}</p>` : ''}${interviewAnswer(item)}<button class="button secondary interview-search-jump" data-action="interview-search-jump" data-category="${escapeHtml(section.id)}" data-index="${index}">前往本题练习</button></details>`).join('') || '<p>没有找到匹配题目，请尝试其他关键词。</p>'}</div>
+      ${pages > 1 ? `<div class="question-search-pages"><button class="button secondary" data-action="interview-search-prev" ${interviewSearchPage === 0 ? 'disabled' : ''}>上一页</button><button class="button secondary" data-action="interview-search-next" ${interviewSearchPage >= pages - 1 ? 'disabled' : ''}>下一页</button></div>` : ''}` : ''}
+  </section>`;
+}
+
 function interviewView() {
   if (!interviewReady) return `${heading('INTERVIEW', 'Interview', '面试问答与双语口译练习。')}${interviewError ? `<div class="notice" role="alert">${escapeHtml(interviewError)}</div>` : '<div class="empty-card">正在加载 interview 题库…</div>'}`;
   const section = interviewSections.find(item => item.id === interviewCategory) || interviewSections[0];
   const item = section.items[Math.min(interviewIndex, section.items.length - 1)];
   const revealed = interviewMode === 'answers' || interviewRevealed;
-  const questionText = item.kind === 'zh-en' ? item.chineseQuestion
-    : item.kind === 'en-zh' ? item.documentEnglishQuestion : item.translatedQuestion;
+  const questionText = interviewQuestionText(item);
   const draftKey = `${section.id}:${item.number}`;
   const modeButtons = `<div class="interview-mode-actions"><button class="button ${interviewMode === 'study' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="study" aria-pressed="${interviewMode === 'study'}">学习模式</button><button class="button ${interviewMode === 'answers' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="answers" aria-pressed="${interviewMode === 'answers'}">显示答案模式</button></div>`;
   return `${heading('INTERVIEW', 'Interview', '练习作答、录音并对照双语答案。', modeButtons)}
+    ${interviewSearchView()}
     <div class="interview-toolbar"><label for="interview-category">题目分类</label><select id="interview-category">${interviewSections.map(value => `<option value="${value.id}" ${value.id === section.id ? 'selected' : ''}>${escapeHtml(value.title)}（${value.items.length}）</option>`).join('')}</select><span>${interviewIndex + 1} / ${section.items.length}</span></div>
     <div class="interview-layout"><section class="panel interview-main">
       <div class="interview-question-head"><span class="tag">${escapeHtml(section.title)}${item.topic ? ` · ${escapeHtml(item.topic)}` : ''}</span><strong>第 ${item.number} 题</strong></div>
-      <h2 class="interview-question">${escapeHtml(questionText || '文档未提供题目')}</h2>
+      <h2 class="interview-question">${escapeHtml(questionText)}</h2>
       ${item.kind === 'qa' ? `<details class="interview-document"><summary>查看中文题目</summary><p>${escapeHtml(item.chineseQuestion || '文档未提供中文题目')}</p></details>${item.documentEnglishQuestion ? `<details class="interview-document"><summary>查看文档英文题目</summary><p>${escapeHtml(item.documentEnglishQuestion)}</p></details>` : ''}` : ''}
       ${interviewMode === 'study' ? `<label class="interview-draft-label" for="interview-draft">先试着作答</label><textarea id="interview-draft" placeholder="可在这里整理你的口头答案…" data-draft-key="${escapeHtml(draftKey)}">${escapeHtml(interviewDrafts.get(draftKey) || '')}</textarea>` : ''}
       <section class="interview-recorder" aria-label="录音与回放"><strong>录音与回放</strong><p>录音只保存在当前浏览器，不会跨浏览器共享。</p><div class="interview-recorder-actions">${interviewRecording && interviewRecording.status === 'recording' ? '<button class="button primary" data-action="interview-record-stop">停止并保存录音</button><span role="status">正在录音…</span>' : `<button class="button secondary" data-action="interview-record-start" ${interviewRecording ? 'disabled' : ''}>开始录音</button>${interviewRecording ? '<span role="status">正在准备或保存录音…</span>' : ''}`}</div><p class="interview-recording-status" role="status">正在读取本题录音…</p><audio controls hidden data-recording-key="${escapeHtml(draftKey)}"></audio></section>
@@ -1153,13 +1191,12 @@ function answerOptions(question) {
 }
 
 function questionSearchView() {
-  const normalize = value => value.normalize('NFKC').toLowerCase().replace(/\s+/g, '');
-  const query = normalize(questionSearchQuery);
+  const query = normalizeSearchText(questionSearchQuery);
   const results = [];
   if (query) {
     for (const paper of state.papers) {
       for (const question of paper.questions) {
-        if ([question.stem, ...question.options.map(option => option.text)].some(text => normalize(text).includes(query))) {
+        if ([question.stem, ...question.options.map(option => option.text)].some(text => normalizeSearchText(text).includes(query))) {
           results.push({ paper, question });
         }
       }
@@ -1310,6 +1347,29 @@ document.addEventListener('click', async event => {
     questionSearchPage += action === 'question-search-next' ? 1 : -1;
     render();
     document.querySelector('#question-search-form').scrollIntoView({ block: 'start' });
+  }
+  else if (action === 'clear-interview-search') { interviewSearchInput = ''; interviewSearchQuery = ''; interviewSearchPage = 0; render(); }
+  else if (action === 'interview-search-prev' || action === 'interview-search-next') {
+    interviewSearchPage += action === 'interview-search-next' ? 1 : -1;
+    render();
+    document.querySelector('#interview-search-form').scrollIntoView({ block: 'start' });
+  }
+  else if (action === 'interview-search-jump') {
+    if (interviewRecording) { notify('请先停止录音并等待保存完成，再切换题目。'); return; }
+    const section = interviewSections.find(item => item.id === button.dataset.category);
+    const index = Number(button.dataset.index);
+    if (!section || !Number.isInteger(index) || index < 0 || index >= section.items.length) {
+      notify('未找到对应题目，请重新搜索。', true);
+      return;
+    }
+    interviewCategory = section.id;
+    interviewIndex = index;
+    interviewRevealed = false;
+    interviewSearchInput = '';
+    interviewSearchQuery = '';
+    interviewSearchPage = 0;
+    render();
+    document.querySelector('.interview-main').scrollIntoView({ block: 'start' });
   }
   else if (action === 'interview-record-start') { await startInterviewRecording(); }
   else if (action === 'interview-record-stop' && interviewRecording && interviewRecording.status === 'recording') {
@@ -1466,10 +1526,21 @@ document.addEventListener('input', event => {
     interviewDrafts.set(event.target.dataset.draftKey, event.target.value);
   } else if (event.target.id === 'question-search-input') {
     questionSearchInput = event.target.value;
+  } else if (event.target.id === 'interview-search-input') {
+    interviewSearchInput = event.target.value;
   }
 });
 
 app.addEventListener('submit', event => {
+  if (event.target.id === 'interview-search-form') {
+    event.preventDefault();
+    interviewSearchInput = event.target.querySelector('#interview-search-input').value;
+    interviewSearchQuery = interviewSearchInput.trim();
+    interviewSearchPage = 0;
+    render();
+    if (!interviewSearchQuery) notify('请输入题目关键词。');
+    return;
+  }
   if (event.target.id !== 'question-search-form') return;
   event.preventDefault();
   questionSearchInput = event.target.querySelector('#question-search-input').value;
