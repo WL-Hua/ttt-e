@@ -26,6 +26,14 @@ let interviewError = '';
 let interviewSearchInput = '';
 let interviewSearchQuery = '';
 let interviewSearchPage = 0;
+const interviewGuidePlaces = ['孙中山纪念堂', '开平碉楼', '陈家祠', '丹霞山', '南越王博物院（王墓展区）'];
+const interviewMockKey = 'mock-latest';
+let interviewArea = 'questions';
+let interviewGuideIndex = 0;
+let interviewMock = null;
+let interviewMockReady = false;
+let interviewMockError = '';
+let interviewMockBusy = false;
 const interviewDrafts = new Map();
 let interviewRecording = null;
 let interviewAudioUrl = '';
@@ -984,9 +992,93 @@ async function installBundledInterview() {
 }
 
 function interviewRecordingKey() {
+  if (interviewArea === 'guides') return `guide-place:${interviewGuideIndex}`;
+  if (interviewArea === 'mock') return interviewMock ? `mock:${interviewMock.id}:${interviewMock.index}` : '';
   const section = interviewSections.find(item => item.id === interviewCategory);
   const item = section && section.items[interviewIndex];
   return item ? `${section.id}:${item.number}` : '';
+}
+
+async function loadInterviewMock() {
+  try {
+    const saved = await interviewRecordingStore('readonly', store => store.get(interviewMockKey));
+    if (saved !== undefined) {
+      if (!saved || typeof saved.id !== 'string' || !Array.isArray(saved.items) || saved.items.length !== 9 ||
+        !Number.isInteger(saved.index) || saved.index < 0 || saved.index >= saved.items.length ||
+        saved.items.some(entry => !entry || typeof entry.label !== 'string' ||
+          (!entry.place && (!entry.question || typeof entry.question.kind !== 'string')))) {
+        throw new Error('模拟测试记录格式无效');
+      }
+      interviewMock = saved;
+    }
+    interviewMockReady = true;
+  } catch (error) {
+    interviewMockError = error.message;
+    notify(`无法读取模拟测试：${error.message}`, true);
+  }
+  if (view === 'interview' && interviewArea === 'mock') render();
+}
+
+function drawInterviewMock() {
+  const draw = (category, count, label) => {
+    const section = interviewSections.find(entry => entry.id === category);
+    if (!section || section.items.length < count) throw new Error(`${label}题库不足 ${count} 题`);
+    const pool = section.items.slice();
+    const items = [];
+    for (let i = 0; i < count; i++) {
+      const selected = Math.floor(Math.random() * pool.length);
+      items.push({ label, question: pool.splice(selected, 1)[0] });
+    }
+    return items;
+  };
+  const place = interviewGuidePlaces[Math.floor(Math.random() * interviewGuidePlaces.length)];
+  return {
+    id: crypto.randomUUID(), index: 0,
+    items: [{ label: '景点讲解', place },
+      ...draw('scenic', 3, '景点问答'),
+      ...draw('zh-en', 1, '中译外'),
+      ...draw('en-zh', 1, '外译中'),
+      ...draw('guide', 1, '导游规范问答'),
+      ...draw('special', 1, '应变能力问答'),
+      ...draw('knowledge', 1, '综合知识问答')]
+  };
+}
+
+async function startInterviewMock() {
+  if (interviewRecording || interviewMockBusy || !interviewMockReady) return;
+  interviewMockBusy = true;
+  try {
+    if (interviewMock && !await confirmAction('开始新的模拟测试？', '这将删除最近一次模拟的题目和录音，且无法恢复。导游词和普通练习录音不会受影响。', '开始新模拟')) return;
+    const next = drawInterviewMock();
+    await interviewRecordingStore('readwrite', store => {
+      if (interviewMock) {
+        interviewMock.items.forEach((item, index) => store.delete(`mock:${interviewMock.id}:${index}`));
+      }
+      return store.put(next, interviewMockKey);
+    });
+    interviewMock = next;
+    notify('已抽取模拟题目，可逐题录音。');
+  } catch (error) {
+    notify(`无法开始模拟测试：${error.message}`, true);
+  } finally {
+    interviewMockBusy = false;
+    render();
+  }
+}
+
+async function navigateInterviewMock(index) {
+  if (interviewRecording || interviewMockBusy || !interviewMock || index < 0 || index >= interviewMock.items.length) return;
+  interviewMockBusy = true;
+  try {
+    const updated = { ...interviewMock, index };
+    await interviewRecordingStore('readwrite', store => store.put(updated, interviewMockKey));
+    interviewMock = updated;
+  } catch (error) {
+    notify(`无法保存模拟进度：${error.message}`, true);
+  } finally {
+    interviewMockBusy = false;
+    render();
+  }
 }
 
 function interviewRecordingStore(mode, operation) {
@@ -1144,8 +1236,36 @@ function interviewSearchView() {
   </section>`;
 }
 
+function interviewRecorderView(key) {
+  return `<section class="interview-recorder" aria-label="录音与回放"><strong>录音与回放</strong><p>录音只保存在当前浏览器，不会跨浏览器共享。</p><div class="interview-recorder-actions">${interviewRecording && interviewRecording.status === 'recording' ? '<button class="button primary" data-action="interview-record-stop">停止并保存录音</button><span role="status">正在录音…</span>' : `<button class="button secondary" data-action="interview-record-start" ${interviewRecording ? 'disabled' : ''}>开始录音</button>${interviewRecording ? '<span role="status">正在准备或保存录音…</span>' : ''}`}</div><p class="interview-recording-status" role="status">正在读取本题录音…</p><audio controls hidden data-recording-key="${escapeHtml(key)}"></audio></section>`;
+}
+
+function interviewGuideView() {
+  return `<section class="panel interview-main"><h2>导游词录音</h2><p>选择景点，录制并回放自己的讲解；每个景点保留一份录音。</p>
+    <div class="interview-toolbar"><label for="interview-guide-place">景点</label><select id="interview-guide-place">${interviewGuidePlaces.map((place, index) => `<option value="${index}" ${index === interviewGuideIndex ? 'selected' : ''}>${escapeHtml(place)}</option>`).join('')}</select></div>
+    <h3>${escapeHtml(interviewGuidePlaces[interviewGuideIndex])}</h3>${interviewRecorderView(interviewRecordingKey())}</section>`;
+}
+
+function interviewMockView() {
+  if (!interviewMockReady) return `<div class="notice" role="status">${escapeHtml(interviewMockError ? `无法读取模拟测试：${interviewMockError}。请检查浏览器存储设置后刷新页面。` : '正在读取模拟测试…')}</div>`;
+  const start = `<button class="button secondary" data-action="interview-mock-start" ${interviewRecording || interviewMockBusy ? 'disabled' : ''}>${interviewMock ? '重新抽题' : '开始模拟测试'}</button>`;
+  if (!interviewMock) return `<section class="panel interview-main"><h2>模拟测试</h2><p>随机抽取 1 个景点、3 道景点问答、2 道口译题和 3 道知识问答，共 9 项。不计时、不评分，可逐项录音回放。</p>${start}</section>`;
+  const entry = interviewMock.items[interviewMock.index];
+  return `<div class="interview-layout"><section class="panel interview-main">
+    <div class="interview-question-head"><span class="tag">${escapeHtml(entry.label)}</span><strong>第 ${interviewMock.index + 1} / 9 项</strong></div>
+    <h2 class="interview-question">${escapeHtml(entry.place || interviewQuestionText(entry.question))}</h2>
+    ${entry.question && entry.question.kind === 'qa' ? `<details class="interview-document"><summary>查看中文题目</summary><p>${escapeHtml(entry.question.chineseQuestion || '文档未提供中文题目')}</p></details>${entry.question.documentEnglishQuestion ? `<details class="interview-document"><summary>查看文档英文题目</summary><p>${escapeHtml(entry.question.documentEnglishQuestion)}</p></details>` : ''}` : ''}
+    ${interviewRecorderView(interviewRecordingKey())}
+    ${entry.question ? `<details class="interview-document"><summary>查看参考答案</summary>${interviewAnswer(entry.question)}</details>` : '<p>请自行讲解此景点，导游词录音与模拟录音分别保存。</p>'}
+    <div class="interview-actions"><button class="button secondary" data-action="interview-mock-prev" ${interviewMock.index === 0 ? 'disabled' : ''}>← 上一项</button><button class="button secondary" data-action="interview-mock-next" ${interviewMock.index === 8 ? 'disabled' : ''}>下一项 →</button></div>
+    <p>不计时、不评分；可随时返回各项回放录音。仅保留最近一次模拟。</p>${start}
+    </section><aside class="panel interview-side"><h3>模拟项目</h3><div class="mock-items">${interviewMock.items.map((item, index) => `<button class="button ${index === interviewMock.index ? 'primary' : 'secondary'}" data-action="interview-mock-jump" data-index="${index}">${index + 1}. ${escapeHtml(item.label)}</button>`).join('')}</div></aside></div>`;
+}
+
 function interviewView() {
   if (!interviewReady) return `${heading('INTERVIEW', 'Interview', '面试问答与双语口译练习。')}${interviewError ? `<div class="notice" role="alert">${escapeHtml(interviewError)}</div>` : '<div class="empty-card">正在加载 interview 题库…</div>'}`;
+  const tabs = `<div class="interview-area-tabs" aria-label="Interview 项目">${[['questions', '题目练习'], ['guides', '导游词录音'], ['mock', '模拟测试']].map(([area, label]) => `<button class="button ${interviewArea === area ? 'primary' : 'secondary'}" data-action="interview-area" data-area="${area}" aria-pressed="${interviewArea === area}">${label}</button>`).join('')}</div>`;
+  if (interviewArea !== 'questions') return `${heading('INTERVIEW', 'Interview', '练习作答、录音并对照双语答案。')}${tabs}${interviewArea === 'guides' ? interviewGuideView() : interviewMockView()}`;
   const section = interviewSections.find(item => item.id === interviewCategory) || interviewSections[0];
   const item = section.items[Math.min(interviewIndex, section.items.length - 1)];
   const revealed = interviewMode === 'answers' || interviewRevealed;
@@ -1153,14 +1273,14 @@ function interviewView() {
   const draftKey = `${section.id}:${item.number}`;
   const modeButtons = `<div class="interview-mode-actions"><button class="button ${interviewMode === 'study' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="study" aria-pressed="${interviewMode === 'study'}">学习模式</button><button class="button ${interviewMode === 'answers' ? 'primary' : 'secondary'}" data-action="interview-mode" data-mode="answers" aria-pressed="${interviewMode === 'answers'}">显示答案模式</button></div>`;
   return `${heading('INTERVIEW', 'Interview', '练习作答、录音并对照双语答案。', modeButtons)}
-    ${interviewSearchView()}
+    ${tabs}${interviewSearchView()}
     <div class="interview-toolbar"><label for="interview-category">题目分类</label><select id="interview-category">${interviewSections.map(value => `<option value="${value.id}" ${value.id === section.id ? 'selected' : ''}>${escapeHtml(value.title)}（${value.items.length}）</option>`).join('')}</select><span>${interviewIndex + 1} / ${section.items.length}</span></div>
     <div class="interview-layout"><section class="panel interview-main">
       <div class="interview-question-head"><span class="tag">${escapeHtml(section.title)}${item.topic ? ` · ${escapeHtml(item.topic)}` : ''}</span><strong>第 ${item.number} 题</strong></div>
       <h2 class="interview-question">${escapeHtml(questionText)}</h2>
       ${item.kind === 'qa' ? `<details class="interview-document"><summary>查看中文题目</summary><p>${escapeHtml(item.chineseQuestion || '文档未提供中文题目')}</p></details>${item.documentEnglishQuestion ? `<details class="interview-document"><summary>查看文档英文题目</summary><p>${escapeHtml(item.documentEnglishQuestion)}</p></details>` : ''}` : ''}
       ${interviewMode === 'study' ? `<label class="interview-draft-label" for="interview-draft">先试着作答</label><textarea id="interview-draft" placeholder="可在这里整理你的口头答案…" data-draft-key="${escapeHtml(draftKey)}">${escapeHtml(interviewDrafts.get(draftKey) || '')}</textarea>` : ''}
-      <section class="interview-recorder" aria-label="录音与回放"><strong>录音与回放</strong><p>录音只保存在当前浏览器，不会跨浏览器共享。</p><div class="interview-recorder-actions">${interviewRecording && interviewRecording.status === 'recording' ? '<button class="button primary" data-action="interview-record-stop">停止并保存录音</button><span role="status">正在录音…</span>' : `<button class="button secondary" data-action="interview-record-start" ${interviewRecording ? 'disabled' : ''}>开始录音</button>${interviewRecording ? '<span role="status">正在准备或保存录音…</span>' : ''}`}</div><p class="interview-recording-status" role="status">正在读取本题录音…</p><audio controls hidden data-recording-key="${escapeHtml(draftKey)}"></audio></section>
+      ${interviewRecorderView(draftKey)}
       ${revealed ? interviewAnswer(item) : '<div class="interview-hidden-answer">先独立思考，再显示参考答案。</div>'}
       <div class="interview-actions"><button class="button secondary" data-action="interview-prev" ${interviewIndex === 0 ? 'disabled' : ''}>← 上一题</button>${interviewMode === 'study' && !interviewRevealed ? '<button class="button primary" data-action="interview-reveal">显示参考答案</button>' : ''}<button class="button secondary" data-action="interview-next" ${interviewIndex === section.items.length - 1 ? 'disabled' : ''}>下一题 →</button></div>
     </section><aside class="panel interview-side"><h3>题目选择</h3><div class="interview-palette">${section.items.map((entry, index) => `<button data-action="interview-jump" data-index="${index}" class="${index === interviewIndex ? 'current' : ''}" aria-label="第 ${entry.number} 题">${entry.number}</button>`).join('')}</div></aside></div>`;
@@ -1320,6 +1440,7 @@ async function startSession(title, questions, sources, paperId = null) {
 document.addEventListener('click', async event => {
   const button = event.target.closest('button, a[data-view]');
   if (!button) return;
+  if (interviewMockBusy) { notify('正在保存模拟测试，请稍候。'); return; }
   if (button.dataset.view) {
     event.preventDefault();
     if (interviewRecording && button.dataset.view !== 'interview') {
@@ -1347,6 +1468,24 @@ document.addEventListener('click', async event => {
     questionSearchPage += action === 'question-search-next' ? 1 : -1;
     render();
     document.querySelector('#question-search-form').scrollIntoView({ block: 'start' });
+  }
+  else if (action === 'interview-area') {
+    if (interviewRecording) { notify('请先停止录音并等待保存完成，再切换项目。'); return; }
+    if (!['questions', 'guides', 'mock'].includes(button.dataset.area)) return;
+    interviewArea = button.dataset.area;
+    render();
+  }
+  else if (action === 'interview-mock-start') { await startInterviewMock(); }
+  else if (action === 'interview-mock-prev' || action === 'interview-mock-next' || action === 'interview-mock-jump') {
+    if (interviewRecording) { notify('请先停止录音并等待保存完成，再切换题目。'); return; }
+    if (!interviewMock) return;
+    const index = action === 'interview-mock-prev' ? interviewMock.index - 1
+      : action === 'interview-mock-next' ? interviewMock.index + 1 : Number(button.dataset.index);
+    if (!Number.isInteger(index) || index < 0 || index >= interviewMock.items.length) {
+      notify('未找到对应模拟项目。', true);
+      return;
+    }
+    await navigateInterviewMock(index);
   }
   else if (action === 'clear-interview-search') { interviewSearchInput = ''; interviewSearchQuery = ''; interviewSearchPage = 0; render(); }
   else if (action === 'interview-search-prev' || action === 'interview-search-next') {
@@ -1486,6 +1625,22 @@ document.addEventListener('click', async event => {
 });
 
 document.addEventListener('change', async event => {
+  if (event.target.id === 'interview-guide-place') {
+    if (interviewRecording || interviewMockBusy) {
+      event.target.value = String(interviewGuideIndex);
+      notify('请先停止录音并等待保存完成，再切换景点。');
+      return;
+    }
+    const index = Number(event.target.value);
+    if (!Number.isInteger(index) || index < 0 || index >= interviewGuidePlaces.length) {
+      event.target.value = String(interviewGuideIndex);
+      notify('未找到对应景点。', true);
+      return;
+    }
+    interviewGuideIndex = index;
+    render();
+    return;
+  }
   if (event.target.id === 'interview-category') {
     if (interviewRecording) {
       event.target.value = interviewCategory;
@@ -1558,7 +1713,7 @@ app.addEventListener('error', event => {
 }, true);
 
 window.addEventListener('beforeunload', event => {
-  if (interviewRecording) {
+  if (interviewRecording || interviewMockBusy) {
     event.preventDefault();
     event.returnValue = '';
   }
@@ -1578,6 +1733,7 @@ if (!sharedMode && !state.progressMigrationDone) {
 render();
 installBundledPapers();
 installBundledInterview();
+loadInterviewMock();
 if (sharedMode) {
   refreshWrong();
   refreshProgress();

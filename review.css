@@ -32,6 +32,9 @@
   .exam-side .full{padding:9px}
 }
 .interview-mode-actions{display:flex;gap:8px;flex-wrap:wrap}
+.interview-area-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 18px}
+.mock-items{display:grid;gap:8px;margin-top:14px}
+.mock-items .button{text-align:left}
 .interview-toolbar{display:flex;align-items:center;gap:12px;margin:0 0 16px;color:#7e9084;font-size:12px}
 .interview-toolbar select{max-width:min(420px,65%);border:1px solid #e0e8e0;border-radius:8px;background:#fff;color:#456151;padding:9px 12px;font:inherit}
 .interview-toolbar span{margin-left:auto}
