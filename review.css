@@ -53,6 +53,7 @@
 .interview-recorder strong{color:#50775b}
 .interview-recorder p{margin:6px 0}
 .interview-recorder-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0}
+.interview-recording-elapsed{font-variant-numeric:tabular-nums;color:#315f49}
 .interview-recorder audio{display:block;width:100%;max-width:420px}
 .interview-recorder audio[hidden]{display:none}
 .interview-answer{display:grid;gap:10px;margin-top:18px}

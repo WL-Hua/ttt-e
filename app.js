@@ -36,6 +36,7 @@ let interviewMockError = '';
 let interviewMockBusy = false;
 const interviewDrafts = new Map();
 let interviewRecording = null;
+let interviewRecordingTimer = null;
 let interviewAudioUrl = '';
 let notice = '';
 let toastTimer;
@@ -1129,6 +1130,28 @@ async function loadInterviewRecording(key, player) {
   }
 }
 
+function interviewRecordingElapsed(recording) {
+  const seconds = Math.max(0, Math.floor(((recording.stoppedAt || Date.now()) - recording.startedAt) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const remaining = seconds % 60;
+  return [hours, minutes, remaining].map(value => String(value).padStart(2, '0')).join(':');
+}
+
+function updateInterviewRecordingTimer() {
+  const timer = app.querySelector('[data-recording-timer]');
+  if (timer && interviewRecording && interviewRecording.startedAt) {
+    timer.textContent = interviewRecordingElapsed(interviewRecording);
+  }
+}
+
+function stopInterviewRecordingTimer() {
+  if (interviewRecordingTimer !== null) {
+    clearInterval(interviewRecordingTimer);
+    interviewRecordingTimer = null;
+  }
+}
+
 async function startInterviewRecording() {
   const key = interviewRecordingKey();
   if (!key || interviewRecording) return;
@@ -1160,6 +1183,8 @@ async function startInterviewRecording() {
     recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
     recorder.onerror = event => { recordingError = (event.error && event.error.message) || '录音设备发生错误'; };
     recorder.onstop = async () => {
+      stopInterviewRecordingTimer();
+      if (!interviewRecording.stoppedAt) interviewRecording.stoppedAt = Date.now();
       stream.getTracks().forEach(track => track.stop());
       interviewRecording.status = 'saving';
       render();
@@ -1177,9 +1202,11 @@ async function startInterviewRecording() {
       }
     };
     recorder.start();
-    interviewRecording = { key, status: 'recording', recorder };
+    interviewRecording = { key, status: 'recording', recorder, startedAt: Date.now() };
+    interviewRecordingTimer = setInterval(updateInterviewRecordingTimer, 250);
     render();
   } catch (error) {
+    stopInterviewRecordingTimer();
     if (stream) stream.getTracks().forEach(track => track.stop());
     interviewRecording = null;
     render();
@@ -1237,7 +1264,9 @@ function interviewSearchView() {
 }
 
 function interviewRecorderView(key) {
-  return `<section class="interview-recorder" aria-label="录音与回放"><strong>录音与回放</strong><p>录音只保存在当前浏览器，不会跨浏览器共享。</p><div class="interview-recorder-actions">${interviewRecording && interviewRecording.status === 'recording' ? '<button class="button primary" data-action="interview-record-stop">停止并保存录音</button><span role="status">正在录音…</span>' : `<button class="button secondary" data-action="interview-record-start" ${interviewRecording ? 'disabled' : ''}>开始录音</button>${interviewRecording ? '<span role="status">正在准备或保存录音…</span>' : ''}`}</div><p class="interview-recording-status" role="status">正在读取本题录音…</p><audio controls hidden data-recording-key="${escapeHtml(key)}"></audio></section>`;
+  const elapsed = interviewRecording && interviewRecording.startedAt
+    ? `<span class="interview-recording-elapsed">录音时长 <time data-recording-timer>${interviewRecordingElapsed(interviewRecording)}</time></span>` : '';
+  return `<section class="interview-recorder" aria-label="录音与回放"><strong>录音与回放</strong><p>录音只保存在当前浏览器，不会跨浏览器共享。</p><div class="interview-recorder-actions">${interviewRecording && interviewRecording.status === 'recording' ? '<button class="button primary" data-action="interview-record-stop">停止并保存录音</button><span role="status">正在录音…</span>' : `<button class="button secondary" data-action="interview-record-start" ${interviewRecording ? 'disabled' : ''}>开始录音</button>${interviewRecording ? '<span role="status">正在准备或保存录音…</span>' : ''}`}${elapsed}</div><p class="interview-recording-status" role="status">正在读取本题录音…</p><audio controls hidden data-recording-key="${escapeHtml(key)}"></audio></section>`;
 }
 
 function interviewGuideView() {
@@ -1515,8 +1544,11 @@ document.addEventListener('click', async event => {
     try {
       interviewRecording.status = 'saving';
       interviewRecording.recorder.stop();
+      interviewRecording.stoppedAt = Date.now();
+      stopInterviewRecordingTimer();
       render();
     } catch (error) {
+      stopInterviewRecordingTimer();
       interviewRecording.recorder.stream.getTracks().forEach(track => track.stop());
       interviewRecording = null;
       render();
